@@ -164,3 +164,13 @@ def test_schema_tells_the_agent_how_to_merge_a_pending_version(run, vault: Path)
     assert "Schema: 合并模板版本" in merge
     # 合并只动 Schema，不改 Wiki、原始材料与我的笔记
     assert "原始材料/" in merge and "我的笔记/" in merge
+
+
+def test_merging_a_schema_presets_the_graph_and_suggests_reclassifying(run, vault: Path):
+    run.run("init", str(vault))
+
+    merge = chapter((vault / "CLAUDE.md").read_text(encoding="utf-8"), "## 合并 Schema 流程")
+    # 图谱预置交给 CLI：只在缺失或仍是 Obsidian 默认值时写入，并提醒用户重新打开图谱
+    assert "sub2obsidian graph-preset --vault ." in merge
+    assert "重新打开" in merge
+    assert "「重新归类」" in merge

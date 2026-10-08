@@ -287,7 +287,7 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "Schema 模板（版本 6）" in schema
+    assert "Schema 模板（版本 7）" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
     # 批注 callout 不得改动
@@ -397,3 +397,99 @@ def test_schema_treats_dubbed_or_subtitled_parts_of_one_video_as_variants(run, v
     raw = chapter(schema, "## 原始材料")
     part_rule = next(line for line in raw.splitlines() if line.startswith("**B站 分P**"))
     assert "同内容版本" in part_rule
+
+
+def graph_settings(vault: Path) -> dict:
+    return json.loads((vault / ".obsidian" / "graph.json").read_text(encoding="utf-8"))
+
+
+def test_init_presets_the_graph_to_show_only_wiki_and_notes_coloured_by_page_type(run, vault: Path):
+    run.run("init", str(vault))
+
+    graph = graph_settings(vault)
+    # 只显示 Wiki 与我的笔记：原始材料、Schema、index、log、来源状态、待筛清单、待合并的 Schema 都在根目录或原始材料里
+    assert graph["search"] == "path:Wiki/ OR path:我的笔记/"
+    # 示例链接与断链形成的幽灵节点、附件、标签都不进图谱
+    assert graph["hideUnresolved"] is True
+    assert graph["showAttachments"] is False
+    assert graph["showTags"] is False
+    # 按页面类型着色：主题域与子主题醒目（暖色），概念页主色，来源页灰色，综述页单独一色
+    colours = {group["query"]: group["color"] for group in graph["colorGroups"]}
+    assert colours == {
+        "path:Wiki/主题域/": {"a": 1, "rgb": 0xD55E00},
+        "path:Wiki/子主题/": {"a": 1, "rgb": 0xE69F00},
+        "path:Wiki/概念/": {"a": 1, "rgb": 0x0072B2},
+        "path:Wiki/综述/": {"a": 1, "rgb": 0x009E73},
+        "path:Wiki/来源/": {"a": 1, "rgb": 0x9E9E9E},
+        "path:我的笔记/": {"a": 1, "rgb": 0xCC79A7},
+    }
+    assert git(vault, "ls-files", ".obsidian/graph.json").strip() == ".obsidian/graph.json"
+
+
+def test_init_creates_the_subtopic_folder(run, vault: Path):
+    run.run("init", str(vault))
+
+    assert (vault / "Wiki" / "子主题").is_dir()
+
+
+def test_rerun_init_keeps_an_existing_graph_json(run, vault: Path):
+    run.run("init", str(vault))
+    mine = '{"search": "path:Wiki/概念/", "colorGroups": []}'
+    (vault / ".obsidian" / "graph.json").write_text(mine, encoding="utf-8")
+
+    run.run("init", str(vault))
+
+    assert (vault / ".obsidian" / "graph.json").read_text(encoding="utf-8") == mine
+
+
+def test_schema_groups_concepts_into_subtopics_with_hierarchical_tags(run, vault: Path):
+    """主题域下分子主题，每个子主题一个入口页；概念页带层级标签，可属于多个子主题（#20）。"""
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    subtopic = chapter(schema, "### 子主题入口页")
+    assert "Wiki/子主题/" in subtopic
+    assert "页面类型: 子主题" in subtopic
+    assert "多个子主题" in subtopic
+    concept = chapter(schema, "### 概念页")
+    assert "子主题:" in concept
+    assert "tags:" in concept and "AI/" in concept
+    # 概念页不再直接链接主题域，层级是 主题域 → 子主题 → 概念
+    assert '主题域:\n  - "[[AI]]"' not in concept
+    domain = chapter(schema, "### 主题域入口页")
+    assert "## 子主题" in domain
+    # 编译时归类、维护子主题入口页
+    assert "子主题" in chapter(schema, "## 编译流程")
+
+
+def test_schema_lint_reviews_subtopics_and_suggests_merging_or_splitting(run, vault: Path):
+    run.run("init", str(vault))
+
+    lint = chapter((vault / "CLAUDE.md").read_text(encoding="utf-8"), "## 全库体检流程")
+    assert "子主题" in lint
+    for word in ["过多", "过少", "重复", "合并", "拆分"]:
+        assert word in lint, word
+
+
+def test_schema_has_a_one_off_reclassification_into_subtopics(run, vault: Path):
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    opening = schema.partition("## 不可违反的规则")[0]
+    assert "「重新归类」" in opening
+    reclassify = chapter(schema, "## 重新归类流程")
+    assert "Wiki/子主题/" in reclassify
+    assert "tags" in reclassify
+    assert "> [!我]" in reclassify  # 批注原样保留
+    assert "git commit" in reclassify
+    assert "重新归类:" in reclassify  # 提交说明首行
+
+
+def test_schema_has_no_live_example_wikilinks(run, vault: Path):
+    """Schema 里的示例链接都在代码中：Obsidian 不把它们当链接，图谱里就没有「概念页」「页面名」这样的幽灵节点。"""
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    prose = re.sub(r"^\s*```.*?^\s*```", "", schema, flags=re.S | re.M)
+    prose = re.sub(r"`[^`\n]*`", "", prose)
+    assert re.findall(r"\[\[[^\]]*\]\]", prose) == []

@@ -33,13 +33,16 @@ from sub2obsidian.transcription import (
 )
 from sub2obsidian.transcription import summarize as summarize_transcription
 from sub2obsidian.vault import (
+    GRAPH_SETTINGS,
     PENDING_SCHEMA,
     RAW_DIR,
     SCHEMA_VERSION,
     SCREENING_LIST,
     NoSchema,
+    GraphState,
     SchemaState,
     init_vault,
+    preset_graph,
     upgrade_schema,
 )
 
@@ -351,6 +354,31 @@ def upgrade_schema_command(vault_path: Path | None) -> None:
         f"在知识库目录中对 agent 说「按 {PENDING_SCHEMA} 中的「合并 Schema 流程」合并 Schema」"
         "（旧版 Schema 里还没有这个流程）：它会保留知识库的定制、并入新模板的变化，"
         "更新版本号后删除待合并文件并提交。"
+    )
+
+
+@cli.command("graph-preset")
+@vault_option
+def graph_preset_command(vault_path: Path | None) -> None:
+    """给关系图谱写入预置设置（只在图谱设置缺失或仍是 Obsidian 默认值时写，从不覆盖你调过的）。"""
+    vault = _initialized_vault(vault_path)
+    try:
+        state = preset_graph(vault)
+    except GitError as error:
+        raise click.ClickException(str(error)) from error
+    if state is GraphState.ALREADY:
+        click.echo("关系图谱已是预置设置，无需写入")
+        return
+    if state is GraphState.CUSTOMISED:
+        click.echo(
+            f"{GRAPH_SETTINGS} 中是你调过的图谱设置，未改动。"
+            f"想换成预置：在 Obsidian 中关闭关系图谱，删除 {GRAPH_SETTINGS} 后重新执行本命令"
+        )
+        return
+    click.echo(
+        f"已写入图谱预置 {GRAPH_SETTINGS} 并提交：只显示 Wiki 与我的笔记，按页面类型着色。\n"
+        "请在 Obsidian 中关闭关系图谱后重新打开；仍是旧样子时（Obsidian 还用着内存里的旧设置），"
+        "退出 Obsidian，重新执行本命令，再打开 Obsidian 与关系图谱。"
     )
 
 

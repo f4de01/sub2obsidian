@@ -1,9 +1,10 @@
-"""知识库初始化（目录骨架、索引与日志、Schema）与 Schema 升级。"""
+"""知识库初始化（目录骨架、索引与日志、Schema、Obsidian 预置）、图谱预置与 Schema 升级。"""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -13,19 +14,22 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 RAW_DIR = "原始材料"
+WIKI_DIR = "Wiki"
 SOURCES_DIR = "Wiki/来源"
 CONCEPTS_DIR = "Wiki/概念"
 SYNTHESES_DIR = "Wiki/综述"
 DOMAINS_DIR = "Wiki/主题域"
+SUBTOPICS_DIR = "Wiki/子主题"
 NOTES_DIR = "我的笔记"
 ATTACHMENTS_DIR = "附件"
 STATUS_PAGE = "来源状态.md"
 SCREENING_LIST = "待筛清单.md"  # 由 sync 生成，screen 读取
 SCHEMA_FILES = ["CLAUDE.md", "AGENTS.md"]  # 内容相同的两份 Schema
 PENDING_SCHEMA = "Schema 待合并.md"  # upgrade-schema 写出，agent 合并后删除
+GRAPH_SETTINGS = ".obsidian/graph.json"  # Obsidian 关系图谱的设置
 
 DIRECTORIES = [
     RAW_DIR,
@@ -33,6 +37,7 @@ DIRECTORIES = [
     CONCEPTS_DIR,
     SYNTHESES_DIR,
     DOMAINS_DIR,
+    SUBTOPICS_DIR,
     NOTES_DIR,
     ATTACHMENTS_DIR,
 ]
@@ -50,11 +55,13 @@ def _render(asset: str) -> str:
         concepts_dir=CONCEPTS_DIR,
         syntheses_dir=SYNTHESES_DIR,
         domains_dir=DOMAINS_DIR,
+        subtopics_dir=SUBTOPICS_DIR,
         notes_dir=NOTES_DIR,
         attachments_dir=ATTACHMENTS_DIR,
         status_page=STATUS_PAGE,
         screening_list=SCREENING_LIST,
         pending_schema=PENDING_SCHEMA,
+        graph_settings=GRAPH_SETTINGS,
     )
 
 
@@ -103,6 +110,37 @@ def _obsidian_config() -> dict[str, bytes]:
     return config
 
 
+def _colour(folder: str, rgb: int) -> dict[str, object]:
+    return {"query": f"path:{folder}/", "color": {"a": 1, "rgb": rgb}}
+
+
+# 关系图谱预置：只显示 Wiki 与我的笔记——原始材料、Schema、index、log、来源状态、待筛清单、
+# 待合并的 Schema 都不在这两处，自然被滤掉；按页面类型着色（Okabe-Ito 色盲友好配色）。
+GRAPH_PRESET: dict[str, object] = {
+    "search": f"path:{WIKI_DIR}/ OR path:{NOTES_DIR}/",
+    "showTags": False,
+    "showAttachments": False,
+    "hideUnresolved": True,  # 示例链接、断链形成的幽灵节点不显示
+    "showOrphans": True,  # 孤立页留在图上，便于发现
+    "colorGroups": [
+        _colour(DOMAINS_DIR, 0xD55E00),  # 主题域：朱红，醒目
+        _colour(SUBTOPICS_DIR, 0xE69F00),  # 子主题：橙，醒目
+        _colour(CONCEPTS_DIR, 0x0072B2),  # 概念页：蓝，主色
+        _colour(SYNTHESES_DIR, 0x009E73),  # 综述页：蓝绿
+        _colour(SOURCES_DIR, 0x9E9E9E),  # 来源页：灰，退后
+        _colour(NOTES_DIR, 0xCC79A7),  # 我的笔记：紫红
+    ],
+    "showArrow": False,
+    "textFadeMultiplier": -1,  # 缩小时页面名也早些显示
+    "nodeSizeMultiplier": 1.3,
+    "lineSizeMultiplier": 0.5,  # 细线，减少杂乱
+    "centerStrength": 0.4,
+    "repelStrength": 15,  # 节点推得更开，簇之间留出空隙
+    "linkStrength": 0.8,
+    "linkDistance": 200,
+}
+
+
 def _skeleton_files(today: dt.date) -> dict[str, bytes]:
     """初始化负责的全部文件：知识库内相对路径 → 内容。"""
     schema = _text(_render("schema_template.md"))
@@ -113,6 +151,7 @@ def _skeleton_files(today: dt.date) -> dict[str, bytes]:
         STATUS_PAGE: _text(_render("status_page.md")),
         ".gitignore": _text(GITIGNORE),
         **_obsidian_config(),
+        GRAPH_SETTINGS: _json(GRAPH_PRESET),
     }
 
 
@@ -142,6 +181,80 @@ def init_vault(root: Path) -> InitResult:
     message = "init: 初始化知识库" if new_vault else "init: 补齐知识库缺失项"
     git.commit_paths(root, created_files, message)
     return InitResult(new_vault=new_vault, created=created_dirs + created_files)
+
+
+class GraphState(Enum):
+    WRITTEN = "已写入预置"
+    ALREADY = "已是预置"
+    CUSTOMISED = "用户已自定义"
+
+
+# Obsidian 第一次打开关系图谱时写下的设置；只有这些键、且都是这些值的 graph.json 没有用户的选择。
+_OBSIDIAN_GRAPH_DEFAULTS: dict[str, object] = {
+    "search": "",
+    "showTags": False,
+    "showAttachments": False,
+    "hideUnresolved": False,
+    "showOrphans": True,
+    "colorGroups": [],
+    "showArrow": False,
+    "textFadeMultiplier": 0,
+    "nodeSizeMultiplier": 1,
+    "lineSizeMultiplier": 1,
+    "centerStrength": 0.518713248970312,
+    "repelStrength": 10,
+    "linkStrength": 1,
+    "linkDistance": 250,
+}
+
+
+def _graph_choices(settings: dict[str, object]) -> dict[str, object]:
+    """去掉缩放、面板开合这些随浏览而变的界面状态，只留用户能调的设置。"""
+    return {
+        key: value
+        for key, value in settings.items()
+        if key not in ("scale", "close") and not key.startswith("collapse-")
+    }
+
+
+def _same(a: object, b: object) -> bool:
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool):
+        return not isinstance(b, bool) and math.isclose(a, b)
+    return a == b
+
+
+def _is_obsidian_default(settings: dict[str, object]) -> bool:
+    return all(
+        key in _OBSIDIAN_GRAPH_DEFAULTS and _same(value, _OBSIDIAN_GRAPH_DEFAULTS[key])
+        for key, value in _graph_choices(settings).items()
+    )
+
+
+def _read_graph(target: Path) -> dict[str, object] | None:
+    """graph.json 的内容；文件不存在时为空设置，读不懂（不是 JSON 对象）时为 None。"""
+    if not target.exists():
+        return {}
+    try:
+        settings = json.loads(target.read_text(encoding="utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+    return settings if isinstance(settings, dict) else None
+
+
+def preset_graph(root: Path) -> GraphState:
+    """graph.json 缺失或仍是 Obsidian 的默认设置时写入图谱预置并提交；用户调过的从不覆盖。"""
+    target = root / GRAPH_SETTINGS
+    settings = _read_graph(target)
+    if settings is None:
+        return GraphState.CUSTOMISED
+    if _graph_choices(settings) == GRAPH_PRESET:
+        return GraphState.ALREADY
+    if not _is_obsidian_default(settings):
+        return GraphState.CUSTOMISED
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(_json(GRAPH_PRESET))
+    git.commit_paths(root, [GRAPH_SETTINGS], "graph-preset: 写入关系图谱预置")
+    return GraphState.WRITTEN
 
 
 # Schema 开头说明中的版本标记，如「Schema 模板（版本 5）」；容忍半角括号与多余空格
