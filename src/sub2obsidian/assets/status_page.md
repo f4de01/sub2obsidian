@@ -37,6 +37,8 @@ SORT 采集时间 ASC
 
 ## 待筛
 
+拉取来的收藏：在 [[$screening_list]] 中勾选要保留的来源，然后执行 `sub2obsidian screen`。
+
 ```dataview
 TABLE WITHOUT ID link(file.path, default(标题, 平台内ID)) AS "来源", 平台, 作者, 筛选建议
 FROM "$raw_dir"

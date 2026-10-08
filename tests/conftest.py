@@ -17,7 +17,14 @@ from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LoginRequired
 from sub2obsidian.inbox import InboxBatch, InboxError, InboxNotConfigured
 from sub2obsidian.links import SourceRef
-from sub2obsidian.platforms import FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.platforms import (
+    Favorite,
+    FavoriteList,
+    FavoritesPage,
+    FetchedSource,
+    FetchFailed,
+    SourceUnavailable,
+)
 from sub2obsidian.transcript import Segment
 from sub2obsidian.transcription import TranscriptionFailed
 
@@ -78,6 +85,27 @@ class FakeBilibili:
     audio_failures: dict[str, str] = field(default_factory=dict)
     audio_unavailable: dict[str, str] = field(default_factory=dict)
     audio_files: list[Path] = field(default_factory=list)  # 每次下载的临时音频
+    # 拉取：收藏列表名 → 其中的收藏（从新到旧），按 page_size 分页，游标是页码
+    favorite_folders: dict[str, list[Favorite]] = field(default_factory=dict)
+    page_size: int = 3
+    # (收藏列表名, 游标) → 读这一页时抛出的异常（只抛一次）
+    page_failures: dict[tuple[str, str | None], BaseException] = field(default_factory=dict)
+    pages_read: list[tuple[str, str | None]] = field(default_factory=list)
+
+    def favorite_lists(self) -> list[FavoriteList]:
+        self.credentials.cookies_file(self.platform)
+        return [FavoriteList(id=name, title=name) for name in self.favorite_folders]
+
+    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
+        self.credentials.cookies_file(self.platform)
+        if (list_id, cursor) in self.page_failures:
+            raise self.page_failures.pop((list_id, cursor))
+        self.pages_read.append((list_id, cursor))
+        page = int(cursor or 0)
+        items = self.favorite_folders[list_id]
+        start = page * self.page_size
+        more = start + self.page_size < len(items)
+        return FavoritesPage(items[start : start + self.page_size], str(page + 1) if more else None)
 
     def expand_short_link(self, url: str) -> str:
         if url not in self.short_links:

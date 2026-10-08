@@ -1,0 +1,41 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "info": {
+      "id": 1052622027,
+      "fid": 10526220,
+      "mid": 10000001,
+      "attr": 0,
+      "title": "默认收藏夹",
+      "media_count": 3
+    },
+    "medias": [
+      {
+        "id": 1700002,
+        "type": 2,
+        "title": "【大模型】RAG 到底是什么？10 分钟讲清楚",
+        "cover": "http://i2.hdslb.com/bfs/archive/abcdef0123456789abcdef0123456789abcdef01.jpg",
+        "intro": "检索增强生成（RAG）入门：\n为什么需要它、怎么搭一个最小可用的 RAG。",
+        "page": 2,
+        "duration": 612,
+        "upper": {"mid": 40000004, "name": "某知识区UP主", "face": "https://i0.hdslb.com/bfs/face/member/noface.jpg", "jump_link": ""},
+        "attr": 0,
+        "cnt_info": {"collect": 10, "play": 100, "danmaku": 1, "vt": 0, "play_switch": 0, "reply": 0, "view_text_1": "100"},
+        "link": "bilibili://video/1700002",
+        "ctime": 1714564800,
+        "pubtime": 1714564800,
+        "fav_time": 1727400000,
+        "bv_id": "BV1Ab411c7De",
+        "bvid": "BV1Ab411c7De",
+        "season": null,
+        "ogv": null,
+        "ugc": {"first_cid": 1234567},
+        "media_list_link": "bilibili://music/playlist/playpage/1?page_type=3&oid=1700002&otype=2"
+      }
+    ],
+    "has_more": false,
+    "ttl": 1727712345
+  }
+}

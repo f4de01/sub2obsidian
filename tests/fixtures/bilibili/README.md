@@ -16,3 +16,15 @@
 #12 人工验收时登录后运行 `uv run python scripts/record_bilibili_fixtures.py <带字幕的BV号>` 覆盖这两份，契约测试应仍然通过。
 
 另有 `nav_rate_limited.json`（构造）：风控拦截时接口返回 `-412 请求被拦截`，属于可重试的失败，不是登录失效。
+
+## 列出收藏（拉取）
+
+收藏夹与稍后再看只对登录的账号本人可见，录制不了真实样本，以下样本均按 B站 公开接口形态构造（账号与收藏内容为假）。#12 人工验收时用真实账号回填，核对解析结果。
+
+| 文件 | 接口 | 说明 |
+| --- | --- | --- |
+| `fav_folders.json` | `x/v3/fav/folder/created/list-all?up_mid=<nav 的 mid>` | 账号创建的全部收藏夹 |
+| `fav_resources_page1.json` | `x/v3/fav/resource/list?media_id=…&pn=1&ps=20&order=mtime` | 第 1 页（`has_more: true`）：一个正常视频、一个已失效视频（`attr: 9`，标题「已失效视频」）、一个音频（`type: 12`，不是视频来源） |
+| `fav_resources_page2.json` | 同上，`pn=2` | 最后一页（`has_more: false`） |
+| `fav_resources_private.json` | 同上 | 错误码 `-403 访问权限不足`：可重试的失败 |
+| `toview.json` | `x/v2/history/toview/web` | 稍后再看（一次返回全部） |

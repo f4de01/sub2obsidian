@@ -1,6 +1,10 @@
 """B站 平台适配器：基于 yt-dlp 采集视频元数据、封面与平台字幕（CC 或 AI 字幕，需登录），
 并为没有字幕的视频下载供转写的音频（需要 ffmpeg）。
 
+拉取时列出用户的全部收藏夹与稍后再看，只取元数据。所用的是 yt-dlp 的 B站 收藏夹、稍后再看
+提取器调用的同一组接口（fav/resource、toview），但直接按页读取：yt-dlp 的提取器只给出
+BV 号，要拿标题、简介、时长得逐个视频再解析一遍，回填几千条收藏时请求量会翻几倍。
+
 网络层（BilibiliClient）与解析分开：契约测试用录制样本回放网络层，验证解析与判定。
 """
 
@@ -18,8 +22,16 @@ from typing import Any, Protocol
 from urllib.parse import urlencode, urljoin, urlsplit
 
 from sub2obsidian.credentials import CredentialProvider, LoginRequired
-from sub2obsidian.links import SourceRef
-from sub2obsidian.platforms import Asset, FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.links import SourceRef, UnsupportedLink, bilibili_ref
+from sub2obsidian.platforms import (
+    Asset,
+    Favorite,
+    FavoriteList,
+    FavoritesPage,
+    FetchedSource,
+    FetchFailed,
+    SourceUnavailable,
+)
 from sub2obsidian.tools import require_ffmpeg
 from sub2obsidian.transcript import Transcript, parse_srt
 
@@ -31,6 +43,12 @@ BEIJING = dt.timezone(dt.timedelta(hours=8))
 # 其他错误码（如 62004 审核中、-412 风控）视为可重试的失败。
 UNAVAILABLE_CODES = {-404, 62002, 62012}
 NOT_LOGGED_IN = -101  # nav 接口：账号未登录
+
+WATCH_LATER = FavoriteList(id="toview", title="稍后再看")
+FAVORITES_PAGE_SIZE = 20  # 收藏夹接口每页最多 20 条
+VIDEO_MEDIA = 2  # 收藏夹里的视频；其余（音频、合集等）不是视频来源
+INVALID_ATTRS = {1, 9}  # 收藏夹里已失效的视频：9 为 UP主删除，1 为其他原因
+INVALID_TITLE = "已失效视频"
 
 
 class BilibiliClient(Protocol):
@@ -62,7 +80,7 @@ class BilibiliAdapter:
     def __init__(self, credentials: CredentialProvider, client: BilibiliClient | None = None) -> None:
         self.credentials = credentials
         self.client = client or HttpBilibiliClient()
-        self._login_verified = False
+        self._mid: int | None = None  # 已确认登录的账号；None 表示还没确认
 
     def expand_short_link(self, url: str) -> str:
         return self.client.redirect_target(url)
@@ -89,17 +107,63 @@ class BilibiliAdapter:
             self._raise_if_unavailable(ref)
             raise
 
-    def _verify_login(self, cookies: Path) -> None:
-        """cookie 失效时 yt-dlp 只会悄悄拿不到字幕，所以先向 nav 接口确认登录态。"""
-        if self._login_verified:
-            return
+    def favorite_lists(self) -> list[FavoriteList]:
+        cookies = self.credentials.cookies_file(PLATFORM)
+        mid = self._verify_login(cookies)
+        data = self._data("/x/v3/fav/folder/created/list-all", {"up_mid": str(mid)}, cookies)
+        folders = [
+            FavoriteList(str(folder["id"]), folder.get("title") or str(folder["id"]))
+            for folder in data.get("list") or []
+        ]
+        return [*folders, WATCH_LATER]
+
+    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
+        cookies = self.credentials.cookies_file(PLATFORM)
+        self._verify_login(cookies)
+        if list_id == WATCH_LATER.id:
+            data = self._data("/x/v2/history/toview/web", {}, cookies)
+            items = [_watch_later_item(item) for item in data.get("list") or []]
+            return FavoritesPage([item for item in items if item is not None], None)
+        page = int(cursor or 1)
+        params = {
+            "media_id": list_id,
+            "pn": str(page),
+            "ps": str(FAVORITES_PAGE_SIZE),
+            "order": "mtime",  # 按收藏时间从新到旧
+            "type": "0",
+            "platform": "web",
+        }
+        data = self._data("/x/v3/fav/resource/list", params, cookies)
+        medias = [media for media in data.get("medias") or [] if media.get("type") == VIDEO_MEDIA]
+        items = [_favorite_media(media) for media in medias]
+        return FavoritesPage(
+            [item for item in items if item is not None],
+            str(page + 1) if data.get("has_more") else None,
+        )
+
+    def _data(self, endpoint: str, params: dict[str, str], cookies: Path) -> dict[str, Any]:
+        """需要登录的接口的 data；登录失效抛 LoginRequired，其他错误码可重试。"""
+        response = self.client.api(endpoint, params, cookies)
+        code = response.get("code")
+        if code == NOT_LOGGED_IN:
+            raise LoginRequired(PLATFORM)
+        if code != 0:
+            raise FetchFailed(f"{response.get('message') or 'B站 接口出错'}（{code}）")
+        return response.get("data") or {}
+
+    def _verify_login(self, cookies: Path) -> int:
+        """cookie 失效时 yt-dlp 只会悄悄拿不到字幕，所以先向 nav 接口确认登录态；返回账号 mid。"""
+        if self._mid is not None:
+            return self._mid
         nav = self.client.api("/x/web-interface/nav", {}, cookies)
         code = nav.get("code")
-        if code == NOT_LOGGED_IN or (code == 0 and not (nav.get("data") or {}).get("isLogin")):
+        data = nav.get("data") or {}
+        if code == NOT_LOGGED_IN or (code == 0 and not data.get("isLogin")):
             raise LoginRequired(PLATFORM)
         if code != 0:  # 如 -412 风控拦截：可重试，不是登录问题
             raise FetchFailed(f"{nav.get('message') or 'B站 接口出错'}（{code}）")
-        self._login_verified = True
+        self._mid = int(data.get("mid") or 0)
+        return self._mid
 
     def _raise_if_unavailable(self, ref: SourceRef) -> None:
         view = self.client.api("/x/web-interface/view", {"bvid": ref.platform_id})
@@ -108,18 +172,14 @@ class BilibiliAdapter:
             raise SourceUnavailable(f"{view.get('message') or '稿件不可用'}（{code}）")
 
     def _to_source(self, info: dict[str, Any]) -> FetchedSource:
-        timestamp = info.get("timestamp")
-        description = (info.get("description") or "").strip()
         duration = info.get("duration")
         return FetchedSource(
             kind="视频",
             title=info.get("title") or info["id"],
             author=info.get("uploader"),
-            published=(
-                dt.datetime.fromtimestamp(timestamp, BEIJING).isoformat() if timestamp else None
-            ),
+            published=_beijing_time(info.get("timestamp")),
             duration=round(duration) if duration is not None else None,
-            description="" if description == "-" else description,
+            description=_description(info.get("description")),
             cover=self._cover(info.get("thumbnail")),
             transcript=_subtitles(info.get("subtitles") or {}),
         )
@@ -131,6 +191,67 @@ class BilibiliAdapter:
             url = "https://" + url.removeprefix("http://")
         suffix = PurePosixPath(urlsplit(url).path).suffix.lower() or ".jpg"
         return Asset(name=f"封面{suffix}", data=self.client.download(url))
+
+
+def _beijing_time(timestamp: int | None) -> str | None:
+    return dt.datetime.fromtimestamp(timestamp, BEIJING).isoformat() if timestamp else None
+
+
+def _description(text: str | None) -> str:
+    """B站 用「-」表示没有简介。"""
+    text = (text or "").strip()
+    return "" if text == "-" else text
+
+
+def _listed_video(
+    bvid: str | None,
+    *,
+    title: str | None,
+    author: str | None,
+    published: int | None,
+    duration: int | None,
+    description: str | None,
+    unavailable: bool,
+) -> Favorite | None:
+    """收藏列表中的一个视频；没有 BV 号（如番剧、课程）时不算视频来源。"""
+    try:
+        ref = bilibili_ref(bvid or "")
+    except UnsupportedLink:
+        return None
+    return Favorite(
+        ref=ref,
+        kind="视频",
+        title=title or ref.platform_id,
+        author=author,
+        published=_beijing_time(published),
+        duration=duration or None,
+        description=_description(description),
+        unavailable="收藏夹中显示为已失效视频" if unavailable or title == INVALID_TITLE else None,
+    )
+
+
+def _favorite_media(media: dict[str, Any]) -> Favorite | None:
+    return _listed_video(
+        media.get("bvid") or media.get("bv_id"),
+        title=media.get("title"),
+        author=(media.get("upper") or {}).get("name"),
+        published=media.get("pubtime"),
+        duration=media.get("duration"),
+        description=media.get("intro"),
+        unavailable=media.get("attr") in INVALID_ATTRS,
+    )
+
+
+def _watch_later_item(item: dict[str, Any]) -> Favorite | None:
+    return _listed_video(
+        item.get("bvid"),
+        title=item.get("title"),
+        author=(item.get("owner") or {}).get("name"),
+        published=item.get("pubdate"),
+        duration=item.get("duration"),
+        description=item.get("desc"),
+        unavailable=False,
+    )
 
 
 def _subtitles(subtitles: dict[str, list[dict[str, Any]]]) -> Transcript | None:

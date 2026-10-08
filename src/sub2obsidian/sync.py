@@ -1,10 +1,10 @@
-"""同步编排（sync）：读取收件箱 → 采集已通过的来源 → 转写。
+"""同步编排（sync）：读取收件箱 → 拉取收藏（回填）→ 采集已通过的来源 → 转写。
 
 每一步对每条来源产出一个结果，单条失败不中断整批；失败的来源保持原状态，下次 sync 重试。
-原始材料的 git 提交与汇总由命令行完成。
+拉取来的新来源为「待筛」，拉取之后随即更新待筛清单。原始材料的 git 提交与汇总由命令行完成。
 
 收件箱读到的位置（游标）保存在用户配置目录 state/inbox.toml；同一文件还记着短链解析
-失败、还没能登记成来源的链接，下次 sync 先重试它们。
+失败、还没能登记成来源的链接，下次 sync 先重试它们。回填断点见 backfill.py。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from pathlib import Path
 
 import tomli_w
 
+from sub2obsidian.backfill import BACKFILL_STATE_FILE, pull
 from sub2obsidian.capture import (
     Outcome,
     already_registered,
@@ -28,8 +29,10 @@ from sub2obsidian.capture import (
 from sub2obsidian.inbox import Inbox, InboxError, InboxNotConfigured
 from sub2obsidian.links import UnsupportedLink, extract_urls
 from sub2obsidian.platforms import AdapterError, FetchFailed, PlatformAdapter
+from sub2obsidian.screening import update_list
 from sub2obsidian.sources import SourceRepository, Status
 from sub2obsidian.transcription import Transcriber, transcribe_collected
+from sub2obsidian.vault import SCREENING_LIST
 
 INBOX_STATE_FILE = "inbox.toml"
 
@@ -63,11 +66,20 @@ def sync(
     adapters: Mapping[str, PlatformAdapter],
     transcriber: Transcriber,
     terms: Sequence[str],
-    state_file: Path,
+    state_dir: Path,
+    batch_size: int,
 ) -> Iterator[Outcome]:
-    """逐步产出结果。缺少 ffmpeg 等本机工具时抛 MissingTool，之前产出的结果仍然有效。"""
+    """逐步产出结果。缺少 ffmpeg 等本机工具时抛 MissingTool，之前产出的结果仍然有效。
+
+    state_dir 是用户配置目录中保存收件箱游标与回填断点的目录。
+    """
     repo = SourceRepository(vault)
-    yield from _read_inbox(repo, inbox, adapters, state_file)
+    yield from _read_inbox(repo, inbox, adapters, state_dir / INBOX_STATE_FILE)
+    try:
+        yield from pull(repo, adapters, batch_size, state_dir / BACKFILL_STATE_FILE)
+    finally:
+        # 之后的步骤不再改动待筛的来源：此时就更新清单，拉取被中断或后面整批中止都不耽误筛选
+        update_list(vault)
     for source in repo.in_status(Status.APPROVED):
         yield collect(source, repo, adapters[source.ref.platform])
     yield from transcribe_collected(vault, adapters, transcriber, terms)
@@ -122,7 +134,10 @@ def summarize(outcomes: Sequence[Outcome]) -> str:
     counts = Counter(source.status for source in final)
     failures = [o.message for o in outcomes if not o.ok]
     parts = [f"新增来源 {sum(o.new for o in outcomes)}"]
-    parts += [f"{status} {counts[status]}" for status in (Status.COLLECTED, Status.TRANSCRIBED)]
+    parts += [
+        f"{status} {counts[status]}"
+        for status in (Status.PENDING, Status.COLLECTED, Status.TRANSCRIBED)
+    ]
     parts += [f"已失效 {counts[Status.UNAVAILABLE]}", f"失败 {len(failures)}"]
     lines = [f"sync 汇总：{'，'.join(parts)}"]
     unavailable = [s for s in final if s.status is Status.UNAVAILABLE]
@@ -132,4 +147,6 @@ def summarize(outcomes: Sequence[Outcome]) -> str:
     if failures:
         lines.append("失败及原因：")
         lines += [f"  - {message}" for message in failures]
+    if counts[Status.PENDING]:
+        lines.append(f"新的待筛来源已列入 {SCREENING_LIST}：勾选后执行 sub2obsidian screen")
     return "\n".join(lines)

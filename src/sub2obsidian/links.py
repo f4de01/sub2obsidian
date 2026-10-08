@@ -68,6 +68,14 @@ def _bilibili_ref(bv_suffix: str) -> SourceRef:
     return SourceRef("bilibili", bvid, f"https://www.bilibili.com/video/{bvid}")
 
 
+def bilibili_ref(bvid: str) -> SourceRef:
+    """BV 号 → 来源身份；不是 BV 号时抛 UnsupportedLink。"""
+    match = _BV.fullmatch(bvid)
+    if not match:
+        raise UnsupportedLink(f"不是 B站 视频的 BV 号：{bvid}")
+    return _bilibili_ref(match.group(1))
+
+
 def _bilibili_video(url: str) -> SourceRef | None:
     parts = urlsplit(url)
     if (parts.hostname or "").lower() not in _BILIBILI_HOSTS:

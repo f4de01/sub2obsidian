@@ -51,6 +51,11 @@ class ReplayClient:
     nav: str = "nav_logged_in.json"
     view: str = "view_ok.json"
     audio_error: str | None = None
+    folders: str = "fav_folders.json"
+    fav_pages: dict[str, str] = field(
+        default_factory=lambda: {"1": "fav_resources_page1.json", "2": "fav_resources_page2.json"}
+    )
+    toview: str = "toview.json"
     requests: list[str] = field(default_factory=list)
 
     def video_info(self, url: str, cookies: Path) -> dict:
@@ -61,7 +66,16 @@ class ReplayClient:
 
     def api(self, endpoint: str, params: dict[str, str], cookies: Path | None = None) -> dict:
         self.requests.append(f"api {endpoint} {params}")
-        return fixture({"/x/web-interface/nav": self.nav, "/x/web-interface/view": self.view}[endpoint])
+        if endpoint == "/x/v3/fav/resource/list":
+            return fixture(self.fav_pages[params["pn"]])
+        return fixture(
+            {
+                "/x/web-interface/nav": self.nav,
+                "/x/web-interface/view": self.view,
+                "/x/v3/fav/folder/created/list-all": self.folders,
+                "/x/v2/history/toview/web": self.toview,
+            }[endpoint]
+        )
 
     def download(self, url: str) -> bytes:
         self.requests.append(f"download {url}")
@@ -264,3 +278,145 @@ def test_audio_download_without_ffmpeg_fails_clearly_before_any_request(
 
     with pytest.raises(MissingTool, match="未找到 ffmpeg"):
         HttpBilibiliClient(interval=(0, 0)).download_audio(REF.url, tmp_path, None)
+
+
+# ---- 列出收藏（拉取）：样本按 B站 公开接口形态构造，登录后录制真实样本放到 #12 ----
+
+FAVORITES_PARAMS = {"ps": "20", "order": "mtime", "type": "0", "platform": "web"}
+
+
+def test_favorite_lists_are_the_users_folders_plus_watch_later(cookies):
+    client = ReplayClient()
+
+    lists = adapter(cookies, client).favorite_lists()
+
+    assert [(item.id, item.title) for item in lists] == [
+        ("1052622027", "默认收藏夹"),
+        ("2087654301", "AI 学习"),
+        ("toview", "稍后再看"),
+    ]
+    # 收藏夹属于当前登录的账号：mid 取自 nav 接口
+    assert client.requests == [
+        "api /x/web-interface/nav {}",
+        "api /x/v3/fav/folder/created/list-all {'up_mid': '10000001'}",
+    ]
+
+
+def test_favorites_page_maps_video_metadata_without_fetching_the_videos(cookies):
+    client = ReplayClient()
+
+    page = adapter(cookies, client).favorites("1052622027", None)
+
+    assert page.next == "2"
+    first = page.items[0]
+    assert first.ref == REF
+    assert first.kind == "视频"
+    assert first.title == "【官方 MV】Never Gonna Give You Up - Rick Astley"
+    assert first.author == "索尼音乐中国"
+    assert first.published == "2020-01-01T07:43:23+08:00"
+    assert first.duration == 212
+    assert first.description == ""  # B站 用「-」表示没有简介
+    assert first.unavailable is None
+    assert not any(request.startswith(("yt-dlp", "download")) for request in client.requests)
+    assert client.requests[-1] == (
+        f"api /x/v3/fav/resource/list {({'media_id': '1052622027', 'pn': '1'} | FAVORITES_PARAMS)}"
+    )
+
+
+def test_favorite_already_gone_is_marked_unavailable_and_non_videos_are_skipped(cookies):
+    page = adapter(cookies, ReplayClient()).favorites("1052622027", None)
+
+    assert [item.ref.platform_id for item in page.items] == ["BV1GJ411x7h7", "BV1x4411V7Ab"]
+    gone = page.items[1]
+    assert gone.unavailable == "收藏夹中显示为已失效视频"
+
+
+def test_last_favorites_page_has_no_next_cursor(cookies):
+    client = ReplayClient()
+
+    page = adapter(cookies, client).favorites("1052622027", "2")
+
+    assert page.next is None
+    [item] = page.items
+    assert item.ref.url == "https://www.bilibili.com/video/BV1Ab411c7De"
+    assert item.description == "检索增强生成（RAG）入门：\n为什么需要它、怎么搭一个最小可用的 RAG。"
+    assert item.published == "2024-05-01T20:00:00+08:00"
+    assert "'pn': '2'" in client.requests[-1]
+
+
+def test_watch_later_is_one_page_of_videos(cookies):
+    client = ReplayClient()
+
+    page = adapter(cookies, client).favorites("toview", None)
+
+    assert page.next is None
+    [item] = page.items
+    assert item.ref.platform_id == "BV1Mc411P7Qr"
+    assert item.title == "10 分钟看懂 MCP 协议"
+    assert item.author == "讲协议的UP"
+    assert item.duration == 600
+    assert item.description == "MCP 是什么、为什么火。"
+    assert item.published == "2025-01-01T08:00:00+08:00"
+    assert client.requests[-1] == "api /x/v2/history/toview/web {}"
+
+
+def test_favorites_api_error_is_retryable(cookies):
+    client = ReplayClient(fav_pages={"1": "fav_resources_private.json"})
+
+    with pytest.raises(FetchFailed, match="访问权限不足（-403）"):
+        adapter(cookies, client).favorites("1052622027", None)
+
+
+def test_listing_favorites_with_expired_login_asks_to_log_in_again(cookies):
+    client = ReplayClient(nav="nav_logged_out.json")
+
+    with pytest.raises(LoginRequired, match="请重新登录 B站"):
+        adapter(cookies, client).favorite_lists()
+
+    assert client.requests == ["api /x/web-interface/nav {}"]
+
+
+def test_listing_favorites_without_login_makes_no_request():
+    client = ReplayClient()
+
+    with pytest.raises(LoginRequired):
+        adapter(None, client).favorites("1052622027", None)
+
+    assert client.requests == []
+
+
+class _Json(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:  # noqa: N802 - http.server 的约定
+        body = b'{"code": 0, "data": {}}'
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args) -> None:
+        pass
+
+
+def test_requests_are_spaced_by_the_configured_random_interval(monkeypatch: pytest.MonkeyPatch):
+    """本地回环服务器代替 api.bilibili.com，不访问网络。"""
+    import time
+
+    server = HTTPServer(("127.0.0.1", 0), _Json)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    monkeypatch.setattr("sub2obsidian.bilibili.API", f"http://127.0.0.1:{server.server_port}")
+    client = HttpBilibiliClient(interval=(0.3, 0.4))
+    started: list[float] = []
+    try:
+        for _ in range(3):
+            started.append(time.monotonic())
+            client.api("/x/v3/fav/resource/list", {"pn": "1"})
+            started[-1] = time.monotonic() - started[-1]
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    # 第一个请求不等；之后每个请求都至少等足最短间隔
+    assert started[0] < 0.3
+    assert all(0.3 <= elapsed < 1.0 for elapsed in started[1:])

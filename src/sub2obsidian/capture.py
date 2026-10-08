@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,9 +57,17 @@ def changed_sources(outcomes: Iterable[Outcome]) -> list[Source]:
 
 
 def commit_changes(
-    vault: Path, outcomes: list[Outcome], *, command: str = "capture", verb: str = "采集"
+    vault: Path,
+    outcomes: list[Outcome],
+    *,
+    command: str = "capture",
+    verb: str = "采集",
+    also: Sequence[str] = (),
 ) -> None:
-    """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。"""
+    """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。
+
+    also 是随之一起提交的其他文件（如待筛清单），知识库内相对路径；没有变化的不提交。
+    """
     changed = changed_sources(outcomes)
     if not changed:
         return
@@ -70,6 +78,7 @@ def commit_changes(
         listing = "\n".join(f"- {line}" for line in lines)
         message = f"{command}: {verb} {len(lines)} 个来源\n\n{listing}"
     paths = [source.directory.relative_to(vault).as_posix() for source in changed]
+    paths += [path for path in also if (vault / path).exists()]
     git.commit_paths(vault, paths, message)
 
 

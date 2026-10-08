@@ -119,6 +119,12 @@ class Source:
     def title(self) -> str:
         return self.meta.get("标题") or self.ref.display
 
+    @property
+    def description(self) -> str:
+        """元数据正文中的简介。"""
+        _, found, rest = self.body.partition("\n## 简介\n\n")
+        return rest.strip() if found else ""
+
 
 def _now() -> str:
     return dt.datetime.now().astimezone().isoformat(timespec="seconds")
@@ -225,6 +231,12 @@ class SourceRepository:
             )
         source.meta["来源状态"] = str(new)
         source.meta["失败原因"] = reason
+        self._save(source)
+
+    def screen(self, source: Source, *, approved: bool, suggestion: str | None) -> None:
+        """筛选一个待筛的来源：转为已通过或已拒绝，并记下 agent 的筛选建议。"""
+        self.transition(source, Status.APPROVED if approved else Status.REJECTED)
+        source.meta["筛选建议"] = suggestion or None
         self._save(source)
 
     def record_failure(self, source: Source, reason: str) -> None:

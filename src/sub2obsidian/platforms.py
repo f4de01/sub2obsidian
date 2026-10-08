@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from sub2obsidian.links import SourceRef
 from sub2obsidian.transcript import Transcript
@@ -57,6 +57,36 @@ class FetchedSource:
     article: Article | None = None  # 文章、图文的正文
 
 
+@dataclass(frozen=True)
+class Favorite:
+    """拉取到的一条收藏：来源身份与筛选所需的元数据；不含任何原始材料文件。"""
+
+    ref: SourceRef
+    kind: str  # 视频 / 文章 / 图文
+    title: str
+    author: str | None = None
+    published: str | None = None  # ISO 8601，带时区
+    duration: int | None = None  # 秒，仅视频
+    description: str = ""
+    unavailable: str | None = None  # 收藏里已显示为失效时的原因
+
+
+@dataclass(frozen=True)
+class FavoriteList:
+    """一个收藏列表：一个收藏夹，或稍后再看。"""
+
+    id: str
+    title: str
+
+
+@dataclass(frozen=True)
+class FavoritesPage:
+    """收藏列表的一页，按收藏时间从新到旧；next 是下一页的游标，没有下一页时为 None。"""
+
+    items: list[Favorite]
+    next: str | None
+
+
 class PlatformAdapter(Protocol):
     platform: str
 
@@ -74,4 +104,21 @@ class PlatformAdapter(Protocol):
         不可用时抛 SourceUnavailable，可重试的失败抛 FetchFailed，缺少 ffmpeg 等本机工具时抛
         MissingTool。
         """
+        ...
+
+
+@runtime_checkable
+class FavoritesAdapter(PlatformAdapter, Protocol):
+    """支持拉取的平台适配器：列出用户的收藏，只取元数据。
+
+    请求之间的随机间隔由适配器自己负责。未登录或登录失效时抛 LoginRequired，
+    可重试的失败（网络、风控）抛 FetchFailed。
+    """
+
+    def favorite_lists(self) -> list[FavoriteList]:
+        """用户的全部收藏列表。"""
+        ...
+
+    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
+        """收藏列表的一页；cursor 为 None 时取第一页。"""
         ...

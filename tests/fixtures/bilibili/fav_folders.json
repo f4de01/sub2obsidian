@@ -1,0 +1,29 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "count": 2,
+    "list": [
+      {
+        "id": 1052622027,
+        "fid": 10526220,
+        "mid": 10000001,
+        "attr": 0,
+        "title": "默认收藏夹",
+        "fav_state": 0,
+        "media_count": 3
+      },
+      {
+        "id": 2087654301,
+        "fid": 20876543,
+        "mid": 10000001,
+        "attr": 22,
+        "title": "AI 学习",
+        "fav_state": 0,
+        "media_count": 0
+      }
+    ],
+    "season": null
+  }
+}

@@ -11,7 +11,7 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = "1"
+SCHEMA_VERSION = "2"
 
 RAW_DIR = "原始材料"
 SOURCES_DIR = "Wiki/来源"
@@ -21,6 +21,7 @@ DOMAINS_DIR = "Wiki/主题域"
 NOTES_DIR = "我的笔记"
 ATTACHMENTS_DIR = "附件"
 STATUS_PAGE = "来源状态.md"
+SCREENING_LIST = "待筛清单.md"  # 由 sync 生成，screen 读取
 
 DIRECTORIES = [
     RAW_DIR,
@@ -48,6 +49,7 @@ def _render(asset: str) -> str:
         notes_dir=NOTES_DIR,
         attachments_dir=ATTACHMENTS_DIR,
         status_page=STATUS_PAGE,
+        screening_list=SCREENING_LIST,
     )
 
 

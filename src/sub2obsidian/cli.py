@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,14 +10,16 @@ import click
 
 from sub2obsidian.capture import Outcome, capture_text, commit_changes
 from sub2obsidian.compilation import Refused, mark_compiled, status_report
-from sub2obsidian.config import UserConfig
+from sub2obsidian.config import BackfillSettings, ConfigError, UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
 from sub2obsidian.git import GitError
 from sub2obsidian.inbox import Inbox
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import PlatformAdapter
-from sub2obsidian.sync import INBOX_STATE_FILE
+from sub2obsidian.screening import ScreenRefused
+from sub2obsidian.screening import screen as screen_sources
+from sub2obsidian.screening import summarize as summarize_screening
 from sub2obsidian.sync import summarize as summarize_sync
 from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
@@ -27,7 +29,7 @@ from sub2obsidian.transcription import (
     transcribe_captured,
     transcribe_collected,
 )
-from sub2obsidian.vault import RAW_DIR, init_vault
+from sub2obsidian.vault import RAW_DIR, SCREENING_LIST, init_vault
 
 
 @dataclass
@@ -101,24 +103,36 @@ vault_option = click.option(
 
 
 def _run_batch(
-    vault: Path, outcomes: Iterable[Outcome], *, command: str, verb: str
+    vault: Path,
+    outcomes: Iterable[Outcome],
+    *,
+    command: str,
+    verb: str,
+    also: Sequence[str] = (),
 ) -> tuple[list[Outcome], MissingTool | None]:
     """逐条输出结果，然后把原始材料的改动单独提交一次 git。
 
-    缺少本机工具时整批中止，已完成的改动照常提交。
+    缺少本机工具时整批中止、用户按 Ctrl+C 时中断，已完成的改动都照常提交。
     """
     done: list[Outcome] = []
     stopped: MissingTool | None = None
+    interrupted = False
     try:
         for outcome in outcomes:
             click.echo(outcome.message, err=not outcome.ok)
             done.append(outcome)
     except MissingTool as error:
         stopped = error
+    except KeyboardInterrupt:
+        interrupted = True
     try:
-        commit_changes(vault, done, command=command, verb=verb)
+        commit_changes(vault, done, command=command, verb=verb, also=also)
     except GitError as error:
         raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
+    if interrupted:
+        raise click.ClickException(
+            f"{command} 已中断：已完成的改动已提交，再次执行 {command} 会从中断处接着处理"
+        )
     return done, stopped
 
 
@@ -174,12 +188,18 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
 @vault_option
 @click.pass_obj
 def sync(ports: Ports, vault_path: Path | None) -> None:
-    """读取收件箱中的新链接，采集所有「已通过」的来源并转写；原始材料的改动单独提交 git。
+    """读取收件箱中的新链接，拉取 B站 收藏（新来源待筛，更新待筛清单），采集所有「已通过」的
+    来源并转写；原始材料的改动单独提交 git。
 
-    缺少 ffmpeg、F2 等本机工具时整批中止，已完成的改动照常提交。
+    回填每次每个平台只登记一批，下次 sync 从断点继续。缺少 ffmpeg、F2 等本机工具时整批中止，
+    已完成的改动照常提交。
     """
     vault = _initialized_vault(vault_path)
     user_config = UserConfig.default()
+    try:
+        backfill = user_config.backfill()
+    except ConfigError as error:
+        raise click.ClickException(str(error)) from error
     outcomes, stopped = _run_batch(
         vault,
         sync_sources(
@@ -188,14 +208,37 @@ def sync(ports: Ports, vault_path: Path | None) -> None:
             ports.adapters,
             ports.transcriber,
             user_config.glossary(),
-            user_config.state_dir / INBOX_STATE_FILE,
+            user_config.state_dir,
+            backfill.batch_size,
         ),
         command="sync",
         verb="同步",
+        also=[SCREENING_LIST],
     )
     click.echo(summarize_sync(outcomes))
     if stopped is not None:
         raise click.ClickException(f"sync 中止：{stopped}")
+    if not all(outcome.ok for outcome in outcomes):
+        raise SystemExit(1)
+
+
+@cli.command()
+@click.option("--reject-all", is_flag=True, help="清单里一个都没勾选时，确认全部拒绝。")
+@vault_option
+def screen(reject_all: bool, vault_path: Path | None) -> None:
+    """按待筛清单筛选：勾选的来源转为「已通过」，未勾选的转为「已拒绝」。
+
+    已通过的来源在下次 sync 时采集并转写；已拒绝的只留存根，不再进入待筛清单。
+    """
+    vault = _initialized_vault(vault_path)
+    try:
+        screened = screen_sources(vault, reject_all=reject_all)
+    except ScreenRefused as error:
+        raise click.ClickException(f"没有改动任何来源状态：{error}") from error
+    outcomes, _ = _run_batch(
+        vault, screened, command="screen", verb="筛选", also=[SCREENING_LIST]
+    )
+    click.echo(summarize_screening(outcomes))
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
 
@@ -238,26 +281,32 @@ def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> 
         click.echo(f"已编译：{source.title}（{source.ref.key}）")
 
 
-def main() -> None:
-    from sub2obsidian.bilibili import BilibiliAdapter
+def real_ports(user_config: UserConfig) -> Ports:
+    """按用户配置组装真实的外部端口。"""
+    from sub2obsidian.bilibili import BilibiliAdapter, HttpBilibiliClient
     from sub2obsidian.browser_credentials import BrowserCredentials
     from sub2obsidian.douyin import DouyinAdapter
     from sub2obsidian.feishu import FeishuInbox
     from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
 
-    user_config = UserConfig.default()
     credentials = BrowserCredentials(user_config)
-    cli(
-        obj=Ports(
-            launcher=SystemLauncher(),
-            credentials=credentials,
-            adapters={
-                "bilibili": BilibiliAdapter(credentials),
-                "douyin": DouyinAdapter(credentials),
-                "wechat": WechatAdapter(),
-            },
-            transcriber=FasterWhisperTranscriber(),
-            inbox=FeishuInbox(user_config),
-        )
+    try:
+        interval = user_config.backfill().interval
+    except ConfigError:  # sync 读取设置时会报出这个错误
+        interval = BackfillSettings().interval
+    return Ports(
+        launcher=SystemLauncher(),
+        credentials=credentials,
+        adapters={
+            "bilibili": BilibiliAdapter(credentials, HttpBilibiliClient(interval)),
+            "douyin": DouyinAdapter(credentials),
+            "wechat": WechatAdapter(),
+        },
+        transcriber=FasterWhisperTranscriber(),
+        inbox=FeishuInbox(user_config),
     )
+
+
+def main() -> None:
+    cli(obj=real_ports(UserConfig.default()))

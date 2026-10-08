@@ -2,7 +2,8 @@ r"""用户配置目录 %APPDATA%\sub2obsidian\ 的读写约定。
 
 目录布局（后续工单按此存放，全部只在本机、绝不进入知识库或任何 git 仓库）：
 
-    config.toml        用户设置，UTF-8 编码的 TOML；目前有 vault（知识库路径）
+    config.toml        用户设置，UTF-8 编码的 TOML：vault（知识库路径）、[transcribe]（术语表）、
+                       [backfill]（回填的批量大小与请求间隔）
     credentials/       平台与飞书应用凭据（cookies.txt、cookie 字符串、App Secret 等）
     browser/<平台>/    凭据提供者使用的 Playwright 持久化浏览器配置
     state/             收件箱游标、回填断点等运行状态
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import os
 import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,26 @@ import tomli_w
 
 APP_NAME = "sub2obsidian"
 DEFAULT_VAULT = Path("D:/Obsidian/知识库")
+
+
+class ConfigError(ValueError):
+    """config.toml 中的设置无效；消息指出哪一项、应该怎么写。"""
+
+
+@dataclass(frozen=True)
+class BackfillSettings:
+    """回填设置。
+
+    batch_size：每次 sync 每个平台最多登记多少条新来源。
+    interval：B站 请求之间的随机间隔（最短, 最长），单位秒；对回填与采集的请求都生效。
+    """
+
+    batch_size: int = 50
+    interval: tuple[float, float] = (1.0, 3.0)
+
+
+def _number(value: object) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
 
 
 class UserConfig:
@@ -69,6 +91,29 @@ class UserConfig:
         if isinstance(terms, str):  # 只写了一个术语时也能用
             terms = [terms]
         return [str(term).strip() for term in terms if str(term).strip()]
+
+    def backfill(self) -> BackfillSettings:
+        """[backfill] 表：batch_size（正整数）与 interval（[最短, 最长] 秒，或一个数）；
+        缺省取默认值，写错时抛 ConfigError。"""
+        section = self.read().get("backfill", {})
+        default = BackfillSettings()
+        batch_size = section.get("batch_size", default.batch_size)
+        if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
+            raise ConfigError(f"config.toml 中 [backfill] batch_size 应为正整数，现为 {batch_size!r}")
+        interval = section.get("interval", list(default.interval))
+        if _number(interval):
+            interval = [interval, interval]
+        if not (
+            isinstance(interval, list)
+            and len(interval) == 2
+            and all(_number(value) for value in interval)
+            and interval[0] <= interval[1]
+        ):
+            raise ConfigError(
+                "config.toml 中 [backfill] interval 应为 [最短, 最长] 秒（如 [2, 5]），"
+                f"现为 {interval!r}"
+            )
+        return BackfillSettings(batch_size, (float(interval[0]), float(interval[1])))
 
     def remember_vault(self, vault: Path) -> None:
         """首次初始化时记下知识库路径，供后续命令使用；已配置的不覆盖。"""

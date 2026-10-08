@@ -196,9 +196,23 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "版本 1" in schema
+    assert "版本 2" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
     # 出处：B站 时间戳可跳转；批注 callout 不得改动
     assert "?t=秒数" in schema
     assert "> [!我]" in schema
+
+
+def test_schema_tells_the_agent_how_to_fill_screening_suggestions(run, vault: Path):
+    run.run("init", str(vault))
+
+    schema = (vault / "AGENTS.md").read_text(encoding="utf-8")
+    section = schema[schema.index("## 筛选建议流程") :]
+    assert "待筛清单.md" in section
+    assert "「建议：」" in section
+    # 每条写「是否知识类 + 建议主题域」，勾选留给用户，CLI 负责状态转换
+    assert "知识类 · <主题域>" in section
+    assert "非知识类" in section
+    assert "不要勾选" in section
+    assert "sub2obsidian screen" in section
