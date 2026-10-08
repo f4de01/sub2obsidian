@@ -148,8 +148,8 @@ class BrowserCredentials:
     def __init__(self, user_config: UserConfig, browser: Browser | None = None) -> None:
         self.user_config = user_config
         self.browser = browser or PlaywrightBrowser()
-        # 本次运行内已读出的有效 cookie，按平台缓存；只在内存里，读一次就要启动一次浏览器
-        self._sessions: dict[str, list[Cookie]] = {}
+        # 本次运行内从各平台浏览器配置读出的 cookie（读一次就要启动一次浏览器）；只在内存里
+        self._profile_cookies: dict[str, list[Cookie]] = {}
 
     def _profile(self, platform: str) -> Path:
         return self.user_config.browser_profile_dir(platform).resolve()
@@ -165,7 +165,7 @@ class BrowserCredentials:
 
     def login(self, platform: str) -> None:
         site = SITES[platform]
-        self._sessions.pop(platform, None)  # 重新登录后以浏览器配置中的新 cookie 为准
+        self._profile_cookies.pop(platform, None)  # 重新登录后以浏览器配置中的新 cookie 为准
         cookies = self.browser.login(
             self._profile(platform), site.url, lambda cookies: self._logged_in(site, cookies)
         )
@@ -185,16 +185,16 @@ class BrowserCredentials:
         )
 
     def _session(self, platform: str) -> list[Cookie]:
-        """浏览器配置中当前的 cookie，本次运行内每个平台只读一次；没有登录或登录已失效时抛 LoginRequired。"""
-        if platform not in self._sessions:
-            self._sessions[platform] = self._read_session(platform)
-        return self._sessions[platform]
+        """浏览器配置中的 cookie；没有登录或登录已失效时抛 LoginRequired。
 
-    def _read_session(self, platform: str) -> list[Cookie]:
+        本次运行内每个平台只读一次浏览器配置，但每次使用都重新检查登录是否有效。
+        """
         profile = self._profile(platform)
         if not profile.is_dir():
             raise LoginRequired(platform)
-        cookies = self.browser.cookies(profile)
+        if platform not in self._profile_cookies:
+            self._profile_cookies[platform] = self.browser.cookies(profile)
+        cookies = self._profile_cookies[platform]
         if not self._logged_in(SITES[platform], cookies):
             raise LoginRequired(platform)
         return cookies

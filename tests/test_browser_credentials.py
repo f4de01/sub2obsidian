@@ -117,20 +117,35 @@ def test_cookies_are_read_from_the_profile_only_once_per_run(user_config):
     assert {cookie.name for cookie in load_jar(second)} == {"SESSDATA", "bili_jct", "DedeUserID", "buvid3"}
 
 
-def test_each_run_rereads_cookies_from_the_profile(user_config):
-    """B站 会轮换 cookie：每次运行以浏览器配置为准，而不是上一次运行导出的旧文件。"""
-    browser = FakeBrowser()
-    BrowserCredentials(user_config, browser).login("bilibili")
-    BrowserCredentials(user_config, browser).cookies_file("bilibili")
-    profile = user_config.browser_profile_dir("bilibili")
-    browser.stored[profile] = [playwright_cookie("SESSDATA", "rotated")]
+@pytest.mark.parametrize(
+    ("platform", "rotated", "read"),
+    [
+        pytest.param(
+            "bilibili",
+            playwright_cookie("SESSDATA", "rotated"),
+            lambda credentials: {c.name: c.value for c in load_jar(credentials.cookies_file("bilibili"))},
+            id="B站cookies文件",
+        ),
+        pytest.param(
+            "douyin",
+            playwright_cookie("sessionid", "rotated", domain=".douyin.com"),
+            lambda credentials: dict(pair.split("=", 1) for pair in credentials.cookie_string("douyin").split("; ")),
+            id="抖音cookie字符串",
+        ),
+    ],
+)
+def test_each_run_rereads_cookies_from_the_profile(user_config, platform, rotated, read):
+    """平台会轮换 cookie：每次运行（新的凭据提供者）都以浏览器配置为准，不沿用上一次运行读到的。"""
+    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN if platform == "douyin" else LOGGED_IN)
+    BrowserCredentials(user_config, browser).login(platform)
+    assert read(BrowserCredentials(user_config, browser)) != {rotated["name"]: "rotated"}  # 上一次运行
+    browser.stored[user_config.browser_profile_dir(platform)] = [rotated]
 
-    path = BrowserCredentials(user_config, browser).cookies_file("bilibili")
-
-    assert {cookie.name: cookie.value for cookie in load_jar(path)} == {"SESSDATA": "rotated"}
+    assert read(BrowserCredentials(user_config, browser)) == {rotated["name"]: "rotated"}
 
 
 def test_logging_in_again_replaces_the_cookies_cached_in_this_run(user_config):
+    """重新登录后，同一次运行里再取 cookie 拿到的是新登录的。"""
     browser = FakeBrowser()
     credentials = BrowserCredentials(user_config, browser)
     credentials.login("bilibili")
@@ -143,6 +158,7 @@ def test_logging_in_again_replaces_the_cookies_cached_in_this_run(user_config):
 
 
 def test_each_platform_caches_its_own_cookies(user_config):
+    """两个平台交替取 cookie：各自只读一次自己的浏览器配置。"""
     browser = FakeBrowser()
     credentials = BrowserCredentials(user_config, browser)
     credentials.login("bilibili")
@@ -180,6 +196,22 @@ def test_expired_or_missing_session_cookie_asks_to_log_in_again(user_config, coo
 
     with pytest.raises(LoginRequired, match="请重新登录 B站"):
         credentials.cookies_file("bilibili")
+
+
+def test_expired_login_is_read_once_and_reported_on_every_use(user_config):
+    """登录失效时 sync 的每个来源都会来取 cookie：每次都报「请重新登录」，但只启动一次浏览器。"""
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+    browser.stored[user_config.browser_profile_dir("bilibili")] = [
+        playwright_cookie("SESSDATA", "old", expires=time.time() - 60)
+    ]
+
+    for _ in range(3):
+        with pytest.raises(LoginRequired, match="请重新登录 B站"):
+            credentials.cookies_file("bilibili")
+
+    assert len(browser.reads) == 1
 
 
 def test_login_that_never_completes_is_reported(user_config):
@@ -245,16 +277,6 @@ def test_cookie_string_exports_douyin_cookies_for_f2(user_config):
         "ttwid": "1%7Cvisitor",
         "s_v_web_id": "verify_xyz",
     }
-
-
-def test_douyin_cookie_string_is_reread_from_the_profile_each_run(user_config):
-    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
-    BrowserCredentials(user_config, browser).login("douyin")
-    BrowserCredentials(user_config, browser).cookie_string("douyin")
-    profile = user_config.browser_profile_dir("douyin")
-    browser.stored[profile] = [playwright_cookie("sessionid", "rotated", domain=".douyin.com")]
-
-    assert BrowserCredentials(user_config, browser).cookie_string("douyin") == "sessionid=rotated"
 
 
 @pytest.mark.parametrize(
