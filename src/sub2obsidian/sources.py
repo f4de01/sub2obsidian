@@ -6,7 +6,7 @@
     封面.jpg     等原始材料文件：只增不改
 
 元数据中的来源状态按状态机转换，非法转换被拒绝；已拒绝与已失效的来源只留元数据存根。
-已拿到可编译原始材料（或已编译）的来源不会再变为已失效。
+已拿到可编译原始材料的来源不会再变为已失效。
 """
 
 from __future__ import annotations
@@ -70,10 +70,14 @@ def compilable(kind: Kind, status: Status) -> bool:
     return status is Status.COLLECTED
 
 
+def holds_compilable_material(kind: Kind, status: Status) -> bool:
+    """已拿到可编译的原始材料：可编译，或已编译。这样的来源在平台上消失也照常编译。"""
+    return status is Status.COMPILED or compilable(kind, status)
+
+
 def transition_allowed(kind: Kind, old: Status, new: Status) -> bool:
     if new is Status.UNAVAILABLE:
-        # 只有还没拿到可编译原始材料的来源才会失效；拿到了的，平台上消失也照常编译
-        return old not in (Status.UNAVAILABLE, Status.COMPILED) and not compilable(kind, old)
+        return old is not Status.UNAVAILABLE and not holds_compilable_material(kind, old)
     if new is Status.COMPILED:
         return compilable(kind, old)
     if new is Status.TRANSCRIBED:

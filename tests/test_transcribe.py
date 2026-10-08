@@ -201,9 +201,10 @@ def test_failed_source_is_retried_on_the_next_run_and_reason_cleared(
     assert meta["失败原因"] is None
 
 
-def test_video_gone_from_platform_becomes_unavailable_keeping_collected_material(
+def test_video_gone_from_platform_becomes_unavailable_keeping_collected_material_not_compilable(
     run, bilibili, transcriber, initialized
 ):
+    """还没转写的视频没有可编译的原始材料：下载不到音频就转为已失效，不能编译（#15）。"""
     vault = initialized
     capture_without_subtitles(run, bilibili, transcriber)
     bilibili.audio_unavailable[BV] = "稿件不可见（62002）"
@@ -216,7 +217,13 @@ def test_video_gone_from_platform_becomes_unavailable_keeping_collected_material
     assert meta["来源状态"] == "已失效"
     assert meta["失败原因"] == "稿件不可见（62002）"
     assert (source_dir(vault, "bilibili", BV) / "封面.jpg").exists()
+    assert not (source_dir(vault, "bilibili", BV) / "口播稿.md").exists()
     assert transcriber.calls == []
+    assert "可编译的来源：无" in run.run("status").output
+    refused = run.run("mark-compiled", f"bilibili/{BV}")
+    assert refused.exit_code != 0
+    assert "不可编译" in refused.output
+    assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已失效"
 
 
 def test_missing_ffmpeg_stops_the_batch_with_a_clear_error_and_changes_nothing(

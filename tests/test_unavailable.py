@@ -1,7 +1,9 @@
-"""已失效：只有在拿到可编译的原始材料之前就在平台上消失的来源才标为已失效。
+"""已失效：只有在拿到可编译的原始材料之前就在平台上消失的来源才标为已失效（#15）。
 
-原始材料已经拿到的来源（有正文的文章、有口播稿的视频），之后在平台上删除也照常编译，
-不再变为已失效；已采集、还没转写的视频在转写时下载不到音频，才转为已失效、不能编译。
+原始材料已经拿到的来源（有正文的文章、有口播稿的视频），之后在平台上删除、又被推送或
+出现在拉取的收藏里，也照常编译，不再变为已失效。另一面——已采集、还没转写的视频在转写时
+下载不到音频，转为已失效、不能编译——见 test_transcribe.py。状态机本身禁止这类来源转为
+已失效，见 test_source_repository.py。
 """
 
 from pathlib import Path
@@ -10,7 +12,7 @@ import pytest
 
 from raw import read_metadata, source_dir
 from sub2obsidian.links import SourceRef
-from sub2obsidian.platforms import Article, Asset, FetchedSource, Favorite
+from sub2obsidian.platforms import Article, Asset, Favorite, FetchedSource
 from sub2obsidian.transcript import Segment, Transcript
 
 BV = "BV1GJ411x7h7"
@@ -23,7 +25,8 @@ WX_LINK = (
 SUBTITLES = Transcript(origin="B站 AI 字幕（ai-zh）", segments=[Segment(0.0, 2.0, "大家好")])
 
 
-def video(transcript: Transcript | None) -> FetchedSource:
+def subtitled_video() -> FetchedSource:
+    """有平台字幕的视频：采集后即有口播稿。"""
     return FetchedSource(
         kind="视频",
         title="RAG 到底是什么",
@@ -31,7 +34,7 @@ def video(transcript: Transcript | None) -> FetchedSource:
         published="2024-05-01T20:00:00+08:00",
         duration=612,
         cover=Asset(name="封面.jpg", data=b"\xff\xd8 fake jpeg"),
-        transcript=transcript,
+        transcript=SUBTITLES,
     )
 
 
@@ -96,7 +99,7 @@ def test_video_with_transcript_stays_compilable_and_compiled_after_it_is_deleted
     run, bilibili, inbox, initialized
 ):
     vault = initialized
-    bilibili.videos[BV] = video(SUBTITLES)
+    bilibili.videos[BV] = subtitled_video()
     run.run("capture", BV_LINK)
     bilibili.unavailable[BV] = "稿件不可见（62002）"
     bilibili.audio_unavailable[BV] = "稿件不可见（62002）"
@@ -121,26 +124,3 @@ def test_video_with_transcript_stays_compilable_and_compiled_after_it_is_deleted
     assert compiled.exit_code == 0, compiled.output
     assert resynced.exit_code == 0, resynced.output
     assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已编译"
-
-
-def test_collected_video_whose_audio_is_gone_at_transcription_becomes_unavailable_and_not_compilable(
-    run, bilibili, transcriber, initialized
-):
-    vault = initialized
-    bilibili.videos[BV] = video(None)  # 没有平台字幕：停在「已采集」等转写
-    run.run("capture", BV_LINK)
-    bilibili.audio_unavailable[BV] = "稿件不可见（62002）"
-
-    transcribed = run.run("transcribe")
-
-    assert transcribed.exit_code == 0, transcribed.output
-    meta = read_metadata(vault, "bilibili", BV)
-    assert meta["来源状态"] == "已失效"
-    assert meta["失败原因"] == "稿件不可见（62002）"
-    assert not (source_dir(vault, "bilibili", BV) / "口播稿.md").exists()
-    assert transcriber.calls == []
-    assert "可编译的来源：无" in run.run("status").output
-    refused = run.run("mark-compiled", f"bilibili/{BV}")
-    assert refused.exit_code != 0
-    assert "不可编译" in refused.output
-    assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已失效"
