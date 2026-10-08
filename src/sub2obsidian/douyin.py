@@ -145,7 +145,7 @@ class DouyinAdapter:
 
     def fetch(self, ref: SourceRef) -> FetchedSource:
         detail = self._detail(ref)
-        common = _common(detail, ref)
+        common = _post_metadata(detail, ref)
         if images := _image_urls(detail):
             return FetchedSource(kind="图文", article=self._article(detail, images), **common)
         return FetchedSource(
@@ -231,11 +231,11 @@ def _favorite(post: dict[str, Any]) -> Favorite:
         kind="图文" if images else "视频",
         duration=None if images else _duration(post),
         unavailable="作品已删除" if deleted else None,
-        **_common(post, ref),
+        **_post_metadata(post, ref),
     )
 
 
-def _common(detail: dict[str, Any], ref: SourceRef) -> dict[str, Any]:
+def _post_metadata(detail: dict[str, Any], ref: SourceRef) -> dict[str, Any]:
     """视频与图文共有的元数据。"""
     return {
         "title": _title(detail, ref),

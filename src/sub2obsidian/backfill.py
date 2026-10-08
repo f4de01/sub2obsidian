@@ -32,6 +32,8 @@ from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
 from sub2obsidian.tools import MissingTool
 
 BACKFILL_STATE_FILE = "backfill.toml"
+# backfill.toml 顶层记录回填已完成的平台的键；其余顶层键都是平台名
+_COMPLETE = "complete"
 
 # 只回填存量、不拉取增量的平台
 ONE_TIME_PLATFORMS = {"douyin"}
@@ -80,10 +82,6 @@ class BackfillState:
         temporary = path.with_suffix(".toml.tmp")
         temporary.write_text(tomli_w.dumps(data), encoding="utf-8", newline="\n")
         temporary.replace(path)
-
-
-# backfill.toml 顶层记录回填已完成的平台的键；其余顶层键都是平台名
-_COMPLETE = "complete"
 
 
 def pull(
