@@ -1,295 +1,212 @@
 # sub2obsidian
 
-把抖音、B站、微信公众号里收藏的知识类视频与文章采集为**原始材料**，再由 agent 会话按知识库中的 **Schema** 编译成按概念组织、互相链接的 Obsidian 个人知识库（Karpathy 式 LLM Wiki）。
+**把你在抖音、B站、公众号收藏吃灰的知识视频和文章，变成一个会自己生长、每句话都能溯源到原视频秒数的 Obsidian 知识库。**
 
-领域术语见 [CONTEXT.md](CONTEXT.md)，架构决策见 [docs/adr/](docs/adr/)。
+![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
+![Obsidian](https://img.shields.io/badge/Obsidian-LLM%20Wiki-7C3AED?logo=obsidian&logoColor=white)
+![Claude Code](https://img.shields.io/badge/Agent-Claude%20Code-D97757)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
-## 安装
+> 收藏 ≠ 学会。你收藏了几百条「AI 必学」「一条视频讲透」，它们散落在三个 App 里，搜不到、对不上、过两个月还可能被删。
+>
+> sub2obsidian 把它们统一采集下来，再交给 AI agent 按**概念**而不是按视频来整理：同一个概念的十条视频，最后汇成一页，各家说法并列，每一句都标着出自哪条视频的第几秒。
 
-需要 [uv](https://docs.astral.sh/uv/) 与 [Git for Windows](https://git-scm.com/download/win)（`git` 在 PATH 中）。
+灵感来自 Andrej Karpathy 的 [LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f)：原始材料只存不改，由 LLM 把它们编译成互相链接的 Wiki，而不是每条内容生成一篇孤零零的摘要。
 
-```powershell
-# 在本仓库根目录
-uv tool install .
-# 升级时
-uv tool install --force .
+如果它对你有用，点个 ⭐ Star 是对这个项目最大的支持。
+
+---
+
+## 它和「AI 总结视频」工具有什么不同
+
+| | 常见的 AI 总结工具 | sub2obsidian |
+|---|---|---|
+| 产出 | 每条视频一篇摘要 | 按概念组织的 Wiki：新视频讲了 MCP，就**改写已有的「MCP」页**，而不是再多一篇摘要 |
+| 可信度 | 摘要里的话无从核对 | 每条论断都带出处，B站 出处**点击直接跳到原视频那一秒** |
+| 观点冲突 | 后来的覆盖先前的 | 不同来源说法矛盾时**并列保留**，标上日期，等你裁决 |
+| 原视频被删 | 摘要还在，原话没了 | 口播稿、正文、封面、配图全部**本地存档** |
+| 隐私与成本 | 音频上传云端、按次付费 | 转写在**本机 GPU** 上完成；编译用你已有的 Claude Code，不另调 API |
+| 改坏了 | 无法回退 | 知识库是 git 仓库，每次编译一次提交，**随时看 diff、随时回退** |
+
+## 效果
+
+下面是真实知识库里「MCP」概念页的片段（来自 2 条 B站 视频和 1 条抖音视频）：
+
+> ## 定义
+> MCP（Model Context Protocol）是连接 LLM 应用与外部能力的协议：开发者写一个 MCP server，在里面注册若干 tool；Cursor 等 MCP 客户端连上 server 后，客户端中的 LLM 就能根据用户的请求调用这些 tool，并拿到返回结果（[[Matt Pocock 5 条 Prompt 从零搭 MCP Server（中英字幕）]] [06:02](https://www.bilibili.com/video/BV1mubY6jE4u?p=1&t=362)；同内容版本：[[…（中配中字）]]）。
+>
+> MCP 可以理解成 AI 连接外部工具的标准协议，有点像 AI 世界里的 USB-C（[[一条视频讲透目前AI主流热词]] 05:43、05:55）。
+>
+> ## 要点
+> - **控制 tool 返回的数据量**：GitHub API 原样返回的数据太多，全塞给 LLM 会很快耗尽[[上下文窗口|context window]]，应在 server 端删减（[[…]] [06:16](https://www.bilibili.com/video/BV1mubY6jE4u?p=1&t=376)）。
+
+注意几个细节：
+- 同一视频的「中英字幕版」和「中文配音版」被识别为**同内容版本**，只算一份证据，不会被当成「两方印证」。
+- 抖音不支持按秒跳转，出处就写时间戳文本。
+- 「上下文窗口」是另一个概念页，Wiki 内部全部用 Obsidian 双链连起来。
+
+在 Obsidian 的关系图谱里，知识按「主题域 → 子主题 → 概念 → 来源」分层并着色。下图是验收时用 16 条真实收藏（B站、抖音、公众号）编译出的知识库：橙色是主题域，粉色是子主题，蓝色是概念，灰色是来源，绿色是综述。在标签面板里还可以按 `AI/AI编程工作流` 这样逐层展开。
+
+![由 16 条收藏编译出的知识库关系图谱](docs/images/graph.png)
+
+除了编译，你还可以直接向知识库**提问**。回答只基于你收藏过的内容、逐条带出处；满意的回答说一句「存档」，就沉淀成一篇综述页。隔一段时间说一句「体检」，agent 会逐条核对所有出处、修断链、合并重复概念，并给出改进建议。
+
+## 支持的平台
+
+| 平台 | 批量导入已有收藏 | 日常新增 | 文字从哪来 |
+|---|---|---|---|
+| **B站** | ✅ 全部自建收藏夹 + 稍后再看 | 收藏夹同步，或分享给飞书机器人 | 优先用平台字幕（CC / AI 字幕），没有时本机转写 |
+| **抖音** | ✅ 全部收藏与收藏夹 | 分享给飞书机器人 | 本机转写；图文帖保存正文与全部图片 |
+| **公众号文章** | 逐篇转发 | 分享给飞书机器人 | 正文转 Markdown，配图下载到本地 |
+| 微信「收藏」 | ❌ 不支持 | — | 唯一的途径是解密微信数据库，有法律和封号风险，见 [ADR-0002](docs/adr/0002-no-wechat-favorites-automation.md) |
+
+B站 多P视频的每个分P是一条独立来源；没有人声的纯音乐、纯演示视频会被识别为「无口播」，只依据简介和封面整理，不会把转写幻觉写进知识库。
+
+## 工作原理
+
+```mermaid
+flowchart LR
+    A["抖音 / B站 / 公众号<br/>收藏与分享"] -->|"sync 拉取收藏<br/>飞书机器人收件箱"| B["待筛清单<br/>agent 给建议，你来勾选"]
+    B -->|"screen"| C["原始材料（只增不改）<br/>口播稿 · 正文 · 封面 · 图片"]
+    C -->|"本机 GPU 转写"| C
+    C -->|"对 agent 说「编译」"| D["Wiki<br/>概念页 · 来源页 · 综述页"]
+    D --> E["Obsidian<br/>图谱 · 标签 · 问询"]
 ```
 
-安装后可在任意目录调用 `sub2obsidian`。项目固定使用 Python 3.12（见 `.python-version`），uv 会自动准备。
+分工很明确：
+- **`sub2obsidian` 命令行**负责所有确定性的工作：登录、拉取、去重、下载、转写、存档、状态管理、git 提交。它**不调用任何大模型 API**。
+- **AI agent**（Claude Code 等）负责需要判断力的工作：写来源页、合并概念、标注分歧、筛选建议、问询、体检。它的全部行为规则写在知识库里的 `CLAUDE.md` / `AGENTS.md`（Schema）中，你可以随时改；工具升级时，`upgrade-schema` 会保留你的改动、并入新规则。
 
-### 外部工具
+为什么这样分工，见 [ADR-0001](docs/adr/0001-deterministic-cli-plus-agent-ingest.md)。
 
-| 工具 | 用途 | 安装 |
-| --- | --- | --- |
-| [yt-dlp](https://github.com/yt-dlp/yt-dlp) | B站 视频元数据与平台字幕 | 作为 Python 依赖随 `uv tool install .` 一起装好，无需单独安装 |
-| Playwright Chromium | `login` 扫码登录用的专用浏览器 | 见下方命令（约 150 MB，装在 `%LOCALAPPDATA%\ms-playwright\`） |
-| [F2](https://github.com/Johnserf-Seed/f2) | 抖音作品详情与收藏列表（接口签名与请求头） | 从 git 安装（其最后一个 tag 版本已过时），见下方命令 |
-| [ffmpeg](https://ffmpeg.org/) | `transcribe` 与抖音视频下载音频后转成 16 kHz 单声道 WAV | `winget install --id Gyan.FFmpeg -e`，装好后**重新打开终端**，确认 `ffmpeg -version` 能运行 |
-| [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | 没有平台字幕时在本机 GPU 上转写 | 随 `uv tool install .` 装好（含 Windows 所需的 cuBLAS 运行库）；需要 NVIDIA 显卡与较新的驱动，模型首次运行时自动下载 |
+## 快速开始
+
+### 准备
+
+- Windows 10 / 11
+- NVIDIA 显卡：本机转写需要 CUDA，已在 RTX 4060 8GB 上验证
+- [uv](https://docs.astral.sh/uv/)、[Git for Windows](https://git-scm.com/download/win)、[Obsidian](https://obsidian.md/)
+- [Claude Code](https://claude.com/claude-code)：用来编译与问询。知识库同时提供 `AGENTS.md`，理论上也可以用 Codex 等读取 `AGENTS.md` 的 agent，但目前只在 Claude Code 上验证过。
+
+### 安装
 
 ```powershell
-# 安装 Playwright Chromium（在 uv tool install 之后执行一次）
+git clone https://github.com/f4de01/sub2obsidian.git
+cd sub2obsidian
+
+# 安装命令行工具（含抖音需要的 F2）
+uv tool install --with "f2 @ git+https://github.com/Johnserf-Seed/f2@f6be8c0ffba9a127075bbeafe4838716650b6325" .
+
+# 扫码登录用的专用浏览器
 & "$(uv tool dir)\sub2obsidian\Scripts\python.exe" -m playwright install chromium
 
-# B站 改版导致采集失败时，先把 yt-dlp 升级到最新版（在本仓库根目录）
-uv tool install --force --upgrade-package yt-dlp .
-
-# 抖音需要 F2（从 git 安装，固定到一个提交；在本仓库根目录）
-uv tool install --force --with "f2 @ git+https://github.com/Johnserf-Seed/f2@f6be8c0ffba9a127075bbeafe4838716650b6325" .
+# 提取音频用的 ffmpeg（装好后重新打开终端）
+winget install --id Gyan.FFmpeg -e
 ```
 
-抖音每隔几个月更换接口签名，F2 随之更新。抖音采集持续报「接口返回空响应」且重新登录也无效时，把上面命令里的提交换成 F2 最新的提交重新安装；仍然不行时考虑改用付费的 TikHub（ADR-0003）。
-
-开发环境（`uv sync` 之后）用 `uv run python -m playwright install chromium` 安装浏览器。
-
-## 初始化知识库
+### 五分钟跑通第一条
 
 ```powershell
-sub2obsidian init                 # 使用配置中的路径，缺省为 D:\Obsidian\知识库
-sub2obsidian init "E:\笔记\知识库"  # 指定路径
+sub2obsidian init                    # 新建知识库，默认 D:\Obsidian\知识库
+sub2obsidian login bilibili          # 弹出窗口，扫码登录
+sub2obsidian capture "https://www.bilibili.com/video/BV1mubY6jE4u"
 ```
 
-`init` 会：
+然后在知识库目录里打开 Claude Code，说一句 **「编译」**，回到 Obsidian 看看生成的概念页。
 
-- 建立目录骨架：`原始材料/`、`Wiki/来源/`、`Wiki/概念/`、`Wiki/综述/`、`Wiki/主题域/`、`Wiki/子主题/`、`我的笔记/`、`附件/`；
-- 写入 `index.md`、`log.md`，以及由 Schema 模板渲染的 `CLAUDE.md` 与 `AGENTS.md`；
-- 写入 Dataview 状态页 `来源状态.md`：各来源状态的数量，以及待编译、待转写、待筛、采集失败、已失效的来源清单；
-- 预置 `.obsidian`：附件目录为 `附件/`、使用 wikilink，Dataview 插件已安装并启用；
-- 预置关系图谱（`.obsidian/graph.json`）：只显示 `Wiki/` 与 `我的笔记/`（原始材料、`CLAUDE.md` / `AGENTS.md`、`index.md`、`log.md`、来源状态、待筛清单都不进图谱），隐藏没有页面的链接（幽灵节点）；按页面类型着色（色盲友好的 Okabe-Ito 配色）：主题域朱红、子主题紫红（与朱红在色盲眼中也分得清）、概念页蓝色、综述页蓝绿、来源页灰色、我的笔记橙色；细线、节点间距加大。之后可以在 Obsidian 里随意调整；
-- 把知识库设为 git 仓库（`.gitignore` 排除 Obsidian 工作区状态），首次初始化提交一次；
-- 在 Obsidian 中打开该知识库：先只读检查 `%APPDATA%\obsidian\obsidian.json`，知识库已在 Obsidian 登记过时，通过 `obsidian://open?path=…` 直接打开；尚未登记（或该文件不存在、无法解析）时不触发 URI——这个 URI 只能打开已登记的目录，不会登记新目录——而是在终端打印一次性的手动步骤：Obsidian 左下角仓库名 →「管理仓库…」→「打开本地仓库」→ 选择该路径 → 信任插件。手动打开一次之后，再执行 `init` 就会直接打开。本工具从不改写 `obsidian.json`。
+### 日常使用
 
-可以放心重复执行：只补缺失的目录与文件，从不覆盖已有文件；补回的文件单独提交，不会卷入你未提交的改动。
+1. 看到好内容，在手机上**分享给飞书里的 sub2obsidian 机器人**。配置一次即可，向导会带你走完：`bash scripts/feishu-inbox-setup.sh`。
+2. 电脑上运行 **`sub2obsidian sync`**：读取收件箱，分批回填 B站 / 抖音收藏，采集并转写。
+3. 回填进来的收藏先进入 `待筛清单.md`。对 agent 说「填写筛选建议」，你勾选要保留的，再运行 **`sub2obsidian screen`**。
+4. 攒够一批，对 agent 说 **「编译」**。
+5. 有问题直接问；好的回答说「存档」；隔一阵说「体检」。
 
-## 登录平台
+所有命令、配置项和流程细节见 **[使用手册](docs/使用手册.md)**。
 
-```powershell
-sub2obsidian login bilibili
-sub2obsidian login douyin
+## 知识库长什么样
+
+```text
+知识库/
+├── 原始材料/              # 只增不改的存档：bilibili/ douyin/ wechat/ 下每条来源一个目录
+├── Wiki/
+│   ├── 主题域/            # AI、法律……
+│   ├── 子主题/            # AI 编程工作流、Agent 协议与扩展……
+│   ├── 概念/              # 主产物：MCP、RAG、Vibe Coding……
+│   ├── 来源/              # 每条视频 / 文章的摘要页，作为概念页的证据
+│   └── 综述/              # 你让 agent 存档的问答
+├── 我的笔记/              # 你自己写的，agent 只读、优先级最高
+├── 待筛清单.md
+├── 来源状态.md            # Dataview 统计
+├── index.md · log.md
+└── CLAUDE.md · AGENTS.md  # Schema：agent 的全部行为规则
 ```
 
-弹出工具专用的 Chromium 窗口，扫码登录后窗口自动关闭（抖音打开的是首页，在弹出的登录框里扫码）。登录状态保存在用户配置目录的专用浏览器配置里，之后的命令直接复用，不读取你日常使用的 Chrome / Edge。B站 的字幕（CC 与 AI 字幕）需要登录才能拿到；抖音的作品详情接口需要登录 cookie，从浏览器配置中读出、拼成 cookie 字符串交给 F2。每次运行中每个平台只读一次浏览器配置（只启动一次无界面浏览器），读出的 cookie 只缓存在内存里。登录失效时命令会提示「请重新登录 B站：sub2obsidian login bilibili」「请重新登录 抖音：sub2obsidian login douyin」。
+你在概念页里写的 `> [!我]` 批注，agent 改写页面时会原样保留。
 
-## 采集一条来源（推送）
+## 常见问题
 
-```powershell
-sub2obsidian capture https://www.bilibili.com/video/BV1GJ411x7h7
-sub2obsidian capture "【某视频标题-哔哩哔哩】 https://b23.tv/xxxxxxx"   # 直接粘贴 App 分享文本
-sub2obsidian capture --vault "E:\笔记\知识库" <链接>                    # 指定知识库
-sub2obsidian capture "7.94 复制打开抖音，看看【某某的作品】… https://v.douyin.com/xxxxxxx/ …"  # 抖音分享口令
-```
+**会消耗很多 token 吗？**
+命令行工具本身不调用任何大模型，不花 token。只有编译、问询、体检这些在 agent 会话里做的事才会消耗，用的是你自己的 Claude Code 额度。建议攒一批再编译。
 
-- 自动从分享文本中提取链接，解析 b23.tv、v.douyin.com 短链，剥离追踪参数；同一来源无论以哪种链接提交（抖音的分享口令、短链、`/video/`、`/note/`、网页版的 `?modal_id=` 链接），只保留一份。
-- B站 多P视频的每个分P是一条独立的来源：链接带 `?p=N` 时只采集第 N P；不带 p 时展开为这个视频的全部分P，全部直接采集（单P视频照旧是一条）。分P的标题为「视频标题 PN 分P标题」，时长、字幕与口播稿都按分P。
-- 推送来的来源直接视为已通过筛选。有平台字幕的视频采集后为「已转写」；没有字幕的 B站 视频停在「已采集」，等待 `sub2obsidian transcribe` 转写（见下文「转写」）。
-- 抖音没有平台字幕：抖音视频采集后当场下载、ASR 转写、删除临时音视频，`capture` 结束时即为「已转写」（转写失败时停在「已采集」，由 `transcribe` 重试）。抖音图文按文章处理：保存文字与全部图片（`正文.md` + `图01.jpg`…），没有口播稿，采集后为「已采集」即可编译。抖音请求低速、带随机间隔。
-- 抖音作品的标题取作品标题，没有时取文案第一行（去掉话题）；作品没有文字时用「抖音作品（作者 · 发布日期）」，图文为「抖音图文（作者 · 发布日期）」，作者与发布日期都不知道时括号里是作品 ID。回填登记的待筛来源用同样的规则（此前已登记的来源标题不变）。
-- 视频已删除或不可见时，来源标为「已失效」，只留元数据存根，以后不再重试。已经拿到正文或口播稿的来源，之后在平台上删除也不受影响：照常编译，不会变为「已失效」。
-- 抖音接口只回空响应时，可能是登录 cookie 失效，也可能是 F2 的签名算法失效：提示先重新登录，仍不行再升级 F2（见「外部工具」），来源保持「已通过」可重试。
-- 网络、风控等可重试的失败：来源保持「已通过」并记下失败原因，再次 `capture` 同一链接即重试。
-- 每次 `capture` 对原始材料的改动单独提交一次 git，不卷入 Wiki 与你未提交的改动；结束时输出与 `sync` 相同格式的汇总（新增、各状态数量、失效与失败的来源及原因）。
-- 上次采集被中断（Ctrl+C）留下了文件、重试时平台给出的同名文件内容不同：原始材料只增不改，不覆盖，记为这条来源的失败（失败原因写明哪个文件），同批其他来源照常采集。
+**会被平台封号吗？**
+工具只用你自己的账号、只读你自己的收藏，请求之间有随机间隔，每次只回填一小批，且只在你手动运行 `sync` 时才请求。即便如此，平台的风控规则不透明，风险无法完全排除；抖音最严，所以抖音收藏只回填一次，之后改用分享推送。
 
-原始材料的布局（只增不改，不保存视频文件）：
+**抖音或 B站 改版后抓不到了怎么办？**
+先升级依赖（命令见使用手册）。三个平台的采集各自独立，一个失效不影响其他平台。抓取持续失败时，计划改用付费的 TikHub 接口作为备选，见 [ADR-0003](docs/adr/0003-open-source-scrapers-first-tikhub-fallback.md)。
 
-```
-原始材料/bilibili/BV1GJ411x7h7/
-  元数据.md   frontmatter：平台、平台内ID、规范链接、类型、标题、作者、发布时间、时长（秒）、
-              采集途径、采集时间、来源状态、筛选建议、失败原因；正文为标题、封面与简介
-  封面.jpg
-  口播稿.md   每段一行，以 [时:分:秒] 开头；平台字幕与 ASR 转写格式相同
-```
+**没有 NVIDIA 显卡 / 用 Mac 可以吗？**
+目前不行：转写依赖 CUDA。B站 有字幕的视频和公众号文章用不到显卡，但其余视频需要转写。CPU 与 macOS 支持在计划中，欢迎 PR。
 
-**平台内 ID**：B站 单P视频就是 BV 号（`bilibili/BV1GJ411x7h7`，规范链接不带参数）。多P视频的第 1 P 同样是 BV 号本身，第 N P（N≥2）为 `BV号_pN`，规范链接带 `?p=N`（如 `bilibili/BV1bK411W797_p2` ↔ `https://www.bilibili.com/video/BV1bK411W797?p=2`）。这样已有的来源目录与链接都不用改：以前采集的多P视频只取了第 1 P，正好就是现在的第 1 P；把它的链接（不带 p）再推送一次，就会补齐其余分P。以前回填（拉取）登记的多P视频同样只有第 1 P、且没有「分P」「视频标题」两项；想让其余分P也进入待筛清单，删掉用户配置目录 `state/backfill.toml` 中的各个 `[bilibili.…]` 表，下次 `sync` 重新读一遍收藏（已登记的来源跳过，只登记新的分P；收藏多时会分几次 sync 读完）。多P视频的分P在元数据中另有「分P」（序号）与「视频标题」两项，单P视频这两项为空。抖音为作品 ID，公众号文章为「公众号数字 ID_mid_idx」。
+**凭据安全吗？**
+登录状态保存在工具专用的浏览器配置里（`%APPDATA%\sub2obsidian\`），不读取你日常使用的浏览器，也绝不会写进知识库或任何 git 仓库。
 
-## 日常同步：飞书收件箱 + `sync`
+## 路线图
 
-日常增量靠**推送**：在手机上把 B站、抖音、公众号等的分享链接发给飞书机器人（与它的私聊就是**收件箱**），回到电脑执行一次 `sync`。
+- [ ] CPU / macOS 转写
+- [ ] 更多平台：小红书、知乎、YouTube
+- [ ] TikHub 备选采集通道
+- [ ] 定时自动 `sync`
+- [ ] 中文转写引擎对比（FunASR / SenseVoice）
 
-### 配置飞书收件箱（一次性）
+欢迎在 [Issues](https://github.com/f4de01/sub2obsidian/issues) 里提需求，或者告诉我你最想接入哪个平台。
 
-飞书自建应用需要人工创建。在本仓库根目录用 Git Bash 运行配置向导，它逐步打开飞书开放平台的页面，告诉你点哪里、复制什么：
+## 相关项目与致谢
 
-```bash
-bash scripts/feishu-inbox-setup.sh
-```
+这个方向已经有不少优秀的项目，按你的需要也许它们更合适：
 
-向导覆盖：创建企业自建应用 → 复制 App ID 与 App Secret → 开启机器人能力 → 开通权限 `im:message`（获取与发送单聊、群组消息）→ 订阅「接收消息」事件（见下）→ 发布版本（可用范围包含你自己）→ 在 API 调试台取得你在该应用下的 open_id。三个值写入 `%APPDATA%\sub2obsidian\credentials\feishu.env`，绝不进入知识库或 git 仓库。可以重复运行，回车保留已保存的值。
+| 项目 | 适合你，如果你想要…… | 和 sub2obsidian 的区别 |
+|---|---|---|
+| [Karpathy 的 LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | 理解这套方法论本身 | 本项目的思想来源 |
+| [llm-wiki-skill](https://github.com/sdyckjq-lab/llm-wiki-skill) | 一个通用的中文 LLM Wiki skill，逐条喂入公众号、知乎、YouTube 链接 | 不批量导入收藏，不支持 B站 / 抖音视频转写 |
+| [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian)、[llm_wiki](https://github.com/nashsu/llm_wiki) | 用 Claude Code 或桌面应用把文档编译成 Wiki | 面向通用文档，没有视频平台采集 |
+| [BiliNote](https://github.com/JefferyHcool/BiliNote) | 给单个视频生成带跳转时间戳和截图的笔记 | 一条视频一篇笔记，不汇总成概念页 |
+| [bilibili-rag](https://github.com/via007/bilibili-rag) | 对 B站 收藏夹做向量检索、聊天问答 | 走 RAG 检索问答，不生成可阅读的 Wiki |
+| [douyin-favorites-to-knowledge](https://github.com/tars1230/douyin-favorites-to-knowledge) | 把抖音收藏批量转成 Markdown 笔记和每日摘要 | 只支持抖音，一条视频一篇笔记 |
 
-**订阅「接收消息」事件**：机器人必须订阅事件 `im.message.receive_v1`（接收消息 v2.0），你才能给它发消息；没订阅时手机飞书的私聊输入框显示「暂时无法给该机器人发消息」。开发者后台保存「使用长连接接收事件」这一订阅方式时，要求当时有客户端连着长连接，所以这一步要先在另一个终端运行：
+sub2obsidian 想补上的是：**三个平台的收藏一起批量导入**，并且编译成**每条论断都能追溯到原视频秒数的概念 Wiki**。
 
-```powershell
-sub2obsidian feishu-connect              # 缺省保持 10 分钟；--minutes 30 保持 30 分钟
-```
+站在这些开源项目的肩膀上：[yt-dlp](https://github.com/yt-dlp/yt-dlp)、[F2](https://github.com/Johnserf-Seed/f2)、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[Playwright](https://playwright.dev/python/)、[Dataview](https://github.com/blacksmithgu/obsidian-dataview)、[飞书开放平台 SDK](https://github.com/larksuite/oapi-sdk-python)。
 
-它读取 `feishu.env` 中的 App ID 与 App Secret 连上飞书长连接，在终端里列出要在后台做的事，按 Ctrl+C 或到时自动结束；连着的时候你给机器人发消息，终端会提示收到。连上之后在开发者后台：
-
-1. 「事件与回调」（Events & Callbacks）→「事件配置」（Event configuration）→「订阅方式」（Subscription mode）选「使用长连接接收事件」（Receive events through persistent connection），保存；
-2. 「添加事件」（Add events），添加 `im.message.receive_v1`（接收消息 v2.0 / Message received v2.0）；
-3. 创建并发布新版本（权限、事件订阅、可用范围的改动都要发布新版本才生效），然后结束 `feishu-connect`。
-
-只有配置时需要长连接：日常不需要公网回调或常驻进程，`sync` 时通过消息列表 API 主动拉取私聊里的新消息。首次 `sync` 时机器人会给你发一条「收件箱已连接」，从而确定私聊会话；之后就把链接发到这个私聊。
-
-### `sync`
-
-```powershell
-sub2obsidian sync
-sub2obsidian sync --vault "E:\笔记\知识库"
-```
-
-依次：
-
-1. 读取收件箱中上次读到之后的新消息（电脑关机期间推送的也不会丢；已读的消息不再处理）；
-2. 从每条消息中提取链接（消息里夹杂文字也可以），作为推送来的来源登记为「已通过」；无法识别平台的链接、没有链接的消息在输出中提示；
-3. 拉取 B站 收藏夹与稍后再看、回填抖音收藏（见下文「回填与筛选」），新来源以「待筛」登记，并更新 `待筛清单.md`；一个平台拉取失败（登录失效、风控、签名失效、没装 F2）只在汇总里报出，不影响其他平台和后面的步骤；
-4. 采集所有「已通过」的来源（包括以前采集失败的、以及 `screen` 通过的），按平台交给对应的适配器；
-5. 为「已采集」的视频转写口播稿（同 `transcribe`）；
-6. 对原始材料（和待筛清单）的改动单独提交一次 git（`sync: …`），不卷入 Wiki 与你未提交的改动；
-7. 输出汇总：新增来源、待筛、已采集、已转写、已失效、失败的数量，以及失效与失败的来源和原因。
-
-单条失败不中断整批：失败的来源保持原状态并记下原因，下次 `sync` 自动重试；短链暂时解析不了的链接也会记下，下次重试。飞书读取失败时照常采集与转写其他来源，收件箱的读取位置不动，下次再读；还没配置飞书时跳过收件箱。读取位置（游标）保存在用户配置目录的 `state/inbox.toml`。
-
-### 回填与筛选（B站、抖音收藏）
-
-存量收藏不必一条条转发：`sync` 会**拉取**你在 B站 的全部收藏夹与稍后再看（需要先 `login bilibili`），以及抖音的全部收藏和各个收藏夹（需要先 `login douyin`，并装好 F2），流程是：
-
-1. **回填只抓元数据**：每条收藏以「待筛」登记，只记标题、作者、时长、发布时间、简介和链接，不下载封面、字幕、图片与音频，不浪费时间和 GPU。抖音的视频与图文都会进入清单。B站 收藏里的多P视频展开为每个分P一条来源：每读到一个多P视频（包括之后每次 sync 重读收藏夹开头时），都要多请求一次公开的视频信息接口来读分P列表；推送不带 p 的 B站 链接时也要多请求一次，用来查分P数。
-2. **待筛清单**：`sync` 在知识库根目录生成（或更新）`待筛清单.md`，每条来源一个勾选框，附元数据、简介摘要和「建议：」栏。多P视频按视频分组：一行视频信息下面每个分P一个勾选框，可以只勾选其中几集，`screen` 按分P分别转为「已通过」或「已拒绝」。
-3. **筛选建议**：在知识库目录里对 agent 说「填写筛选建议」，它按 Schema 在每条的「建议：」后写上是否知识类与建议主题域（CLI 不调用 LLM，ADR-0001）。
-4. **勾选并执行 `screen`**：在 Obsidian 里勾选要保留的来源，然后执行
-
-   ```powershell
-   sub2obsidian screen
-   sub2obsidian screen --reject-all   # 清单里一个都不保留时才用
-   ```
-
-   勾选的转为「已通过」，下次 `sync` 时采集并转写；未勾选的转为「已拒绝」，只留元数据存根，之后再同步也不会回到清单里。建议栏随之记入各来源元数据的「筛选建议」。清单里一个都没勾选时 `screen` 拒绝执行（「已拒绝」不可撤销），除非加 `--reject-all`。`screen` 的改动单独提交一次 git（`screen: …`）。
-
-**分批与断点**：每次 `sync` 每个平台最多登记一批新来源（默认 50 条），请求之间随机间隔（B站 默认 1–3 秒，抖音默认 3–6 秒），以免触发风控。每个收藏夹读到哪一页记在用户配置目录的 `state/backfill.toml`：一批满了、被风控或网络打断、签名失效、或按了 Ctrl+C（已登记的来源照常提交），下次 `sync` 都从断点接着读，不会重复登记。B站 的收藏全部读完后，每次 `sync` 只看各收藏夹开头的新收藏。在 `config.toml` 中调整：
-
-```toml
-[backfill]
-batch_size = 50           # 每次 sync 每个平台最多登记的新来源数
-interval = [2, 5]         # B站 请求之间的随机间隔（秒），对回填与采集都生效
-douyin_interval = [3, 6]  # 抖音接口请求之间的随机间隔（秒），对回填与采集都生效
-```
-
-**抖音只回填一次**：抖音的全部收藏与收藏夹读完后（`sync` 输出「抖音 回填完成」），此后的 `sync` 不再请求抖音收藏，新的抖音收藏请分享到收件箱（推送）。抖音风控严、签名每隔几个月失效，这样请求最少。想再完整拉一次时，删掉 `state/backfill.toml` 中的 `complete` 一行与 `[douyin.…]` 各表。抖音拉取报「接口返回空响应」时，先 `login douyin` 重新登录，仍然不行就升级 F2（见「外部工具」），持续失败时考虑改用 TikHub（ADR-0003）；B站 回填与收件箱照常处理。
-
-收藏夹里已显示为「已失效视频」的条目、抖音收藏里已被删除的作品登记为「已失效」存根，不进入待筛清单；B站 的音频、番剧等非视频收藏跳过。还在待筛清单里的来源，如果你又把它的链接推送（或 `capture`）了一次，视为你已选中：直接转为「已通过」并离开清单。
-
-## 转写（ASR）
-
-```powershell
-sub2obsidian transcribe                    # 转写所有「已采集」的视频来源
-sub2obsidian transcribe --vault "E:\笔记\知识库"
-```
-
-- 平台字幕优先：有字幕的视频在 `capture` 时已经是「已转写」，不会再送去转写；没有字幕的停在「已采集」，由 `transcribe` 批量处理（可以放到夜里单独跑）。
-- 每条来源：下载音频到系统临时目录 → 在本机 GPU 上用 faster-whisper `large-v3-turbo`（CUDA，int8_float16）转写 → 写入与平台字幕相同格式的 `口播稿.md`（`口播稿来源: faster-whisper large-v3-turbo`）→ 状态转为「已转写」→ 删除临时音频。原始材料里不保存任何音视频文件。
-- 口播稿原样保存，不做自动纠错。只含音乐、没有人声的片段会被跳过（语音活动检测），避免转写出幻觉文字。
-- 先检测音频的语言再转写；「简体中文与标点」的风格提示只给中文音频，英文等其他语言的音频不会被带成中文。重复度异常（循环重复同一个词）的段落会被丢弃。
-- Whisper 在没有人声的音频上常吐出「请不吝点赞 订阅 转发 打赏支持明镜与点点栏目」「字幕志愿者 杨茜茜」「Thank you」之类的**已知幻觉句**，这些句子从口播稿中滤掉。滤掉后什么都不剩的视频（纯音乐、只有画面）照常转为「已转写」，但元数据的「无口播」写明原因，编译时 agent 只依据简介与封面，不引用口播稿。
-- 单条失败（网络、风控、音频损坏）不影响同批其他来源：失败的来源保持「已采集」并在元数据中记下失败原因，下次 `transcribe` 自动重试。视频已删除时来源转为「已失效」（还没有口播稿，不能编译），已采集的原始材料保留。
-- 缺少 ffmpeg、显卡运行库出错或模型下载失败属于本机环境问题：整批中止并给出明确提示，未处理的来源保持原状。
-- 对原始材料的改动单独提交一次 git（`transcribe: …`）。
-
-**模型下载**：首次运行时自动从 Hugging Face 下载模型（约 1.6 GB）到 `%USERPROFILE%\.cache\huggingface\hub\`。下载不了时，先设置镜像再运行：
-
-```powershell
-$env:HF_ENDPOINT = "https://hf-mirror.com"
-sub2obsidian transcribe
-```
-
-**术语表**：在 `config.toml` 中配置，转写时作为提示传给转写引擎，让「MCP」「RAG」这类术语不被听错：
-
-```toml
-[transcribe]
-terms = ["MCP", "RAG", "检索增强生成", "Claude Code"]
-```
-
-英文等非中文音频只用术语表中不含汉字的术语。
-
-**已知幻觉句**：内置的黑名单之外，遇到新的幻觉句可以追加（比较时忽略空白、标点与大小写；一段只由这些句子组成时整段滤掉，句子中间提到的不受影响）：
-
-```toml
-[transcribe]
-hallucinations = ["本视频由某某赞助播出"]
-```
-
-## 编译
-
-编译不写代码（ADR-0001）：在知识库目录中开启 agent 会话（如 Claude Code），说「编译」。agent 按知识库中的 Schema（`CLAUDE.md` / `AGENTS.md`）把所有可编译的来源编译进 Wiki：写来源页，新建或改写概念页（每条论断带出处，B站 出处可跳到原视频对应分P的对应秒数：`…/video/<BV号>?p=<分P>&t=<秒数>`），记录分歧，更新 `index.md` 与 `log.md`，做轻量体检，最后以一次 git 提交结束。
-
-agent 编译时用到两条命令，你也可以直接用：
-
-```powershell
-sub2obsidian status                          # 各来源状态的数量，以及可编译的来源
-sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源转为「已编译」
-```
-
-- 「可编译」= 文章或图文「已采集」，或视频「已转写」。
-- `mark-compiled` 接受 `status` 列出的 `<平台>/<平台内ID>`，也接受来源在 `原始材料/` 中的目录或来源的链接（短链除外；B站 不带 p 的链接只指第 1 P）。只要有一个来源找不到或不可编译，就整批拒绝、一个都不改。
-- `mark-compiled` 不单独提交 git：来源状态的改动由 agent 与 Wiki 的改动一起放进本次编译的提交。
-- Schema 初始化后归知识库所有；想改进编译质量就改知识库里的 Schema，重跑 `init` 不会覆盖它。模板出新版本时见「升级 Schema」。
-
-## 问询、存档与全库体检
-
-同样在知识库目录的 agent 会话里进行，按 Schema 执行，不需要命令：
-
-- **问询**：直接提问（如「做企业内部知识库问答，该用 RAG 还是微调？」）。agent 先读 `index.md` 定位页面，只用知识库里的内容回答，每条论断带出处（B站 出处可跳到原视频对应秒数）；Wiki 之外的补充会单独标明。问询不写入任何文件。
-- **存档**：对某个回答说「存档」，agent 把它沉淀为 `Wiki/综述/` 下的**综述页**（跨概念的比较或总结，同样带出处，不含 Wiki 之外的补充），链接到主题域入口页与相关概念页，更新 `index.md` 与 `log.md`，以一次 git 提交（`存档: …`）结束。
-- **全库体检**：说「体检」，agent 检查全部 Wiki 页面，找出并修复矛盾、孤立页、重复概念、断链、缺失的概念页，列出待你裁决的分歧，对子主题过多、过少、重复的地方提出合并或拆分建议（你同意后说「重新归类」执行），并对 Schema 提出改进建议，以一次 git 提交（`体检: …`）结束。Schema 改进建议由你决定是否采纳；采纳的由 agent 同步改进 `CLAUDE.md` 与 `AGENTS.md` 并单独提交（`Schema: …`）。裁决分歧的方式是在分歧下写一条 `> [!我]` 批注或在「我的笔记」里写下判断，下次编译或体检时生效。
-
-## 升级 Schema
-
-Schema 初始化后归知识库所有（`init` 不覆盖已有的 Schema），本仓库的 Schema 模板出新版本时，用旧版初始化的知识库不会自动获得新的规则与流程。升级分两步，合并由 agent 判断，CLI 不调用 LLM（ADR-0001）：
-
-```powershell
-sub2obsidian upgrade-schema                  # 或 --vault <知识库路径>
-```
-
-1. `upgrade-schema` 读 `CLAUDE.md` / `AGENTS.md` 开头说明中的版本号（「Schema 模板（版本 N）」，两份不一致时按较旧的一份；找不到版本号的按旧版处理）。比模板旧时，把当前模板渲染为待合并版本 `Schema 待合并.md` 写进知识库并单独提交，**不改动**现有的 `CLAUDE.md` 与 `AGENTS.md`；已是最新时提示无需升级，不写任何文件。可以重复执行，结果相同。
-2. 在知识库目录的 agent 会话里，照 `upgrade-schema` 的提示说「按 `Schema 待合并.md` 中的『合并 Schema 流程』合并 Schema」（版本 5 之前的 Schema 里还没有这个流程；版本 5 起说「合并 Schema」即可）。agent 按「合并 Schema 流程」：从知识库的 git 历史中取出当前 Schema 所基于的模板原文，分出知识库的定制（如采纳的体检建议）与新模板的变化，保留定制、并入变化、更新版本号，删除 `Schema 待合并.md`，以一次 git 提交（`Schema: 合并模板版本 N`）结束；定制与新模板冲突、无法兼顾的地方列出来请你决定。
-3. 合并的最后，agent 执行 `sub2obsidian graph-preset --vault .`（见下文「关系图谱与子主题」）；新版本引入了新的页面规范时，它会建议你接着做什么（如版本 7 的「重新归类」）。
-
-## 关系图谱与子主题
-
-Wiki 分三层：**主题域**（如 AI）→ **子主题**（如「AI 编程工作流」，入口页在 `Wiki/子主题/`）→ **概念页**。主题域入口页只链接子主题，子主题入口页列出它的概念；概念页至少属于一个子主题，带层级标签（如 `tags: [AI/AI编程工作流]`），可以在 Obsidian 标签面板里逐层展开。编译时 agent 自动归类新概念，体检时对子主题提出合并或拆分建议（Schema 版本 7 起）。
-
-```powershell
-sub2obsidian graph-preset                   # 或 --vault <知识库路径>
-```
-
-给关系图谱写入上文「初始化知识库」中的预置，并单独提交。只在 `.obsidian/graph.json` 不存在、或仍是 Obsidian 的默认设置（第一次打开图谱时写下、没调过；缩放和面板开合不算）时写入；你调过的图谱设置（过滤、颜色组、显示或力度参数，或读不懂的文件）一律不动。写入后在 Obsidian 中关闭关系图谱再重新打开；仍是旧样子时（Obsidian 还用着内存里的旧设置），退出 Obsidian，重新执行本命令，再打开。
-
-版本 7 之前编译的知识库，升级步骤：
-
-1. `sub2obsidian upgrade-schema`，然后在知识库目录的 agent 会话里说「合并 Schema」；合并的最后 agent 会执行 `graph-preset`。
-2. 对 agent 说「重新归类」：它按 Schema 中的「重新归类流程」把已编译的概念页分进子主题，先把划分方案列给你确认，再建立子主题入口页、给概念页补上标签与 `子主题`、让主题域入口页只链接子主题（来源页与综述页 frontmatter 中的主题域改为纯文本，正文都不动），以一次 git 提交（`重新归类: …`）结束。
-
-## 用户配置目录
-
-所有本机配置、凭据与运行状态都放在 `%APPDATA%\sub2obsidian\`，绝不进入知识库或任何 git 仓库：
-
-| 位置 | 内容 |
-| --- | --- |
-| `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表，`hallucinations`：追加的已知幻觉句；`[backfill]` 表的 `batch_size`、`interval` 与 `douyin_interval`：回填的批量大小与 B站、抖音的请求间隔 |
-| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`、`douyin.cookies.txt`（登录时导出；B站 每次运行时从浏览器配置重新导出一次，抖音每次运行时从浏览器配置读出一次 cookie 字符串，同一次运行内复用）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
-| `browser/<平台>/` | 登录用的 Playwright 持久化浏览器配置 |
-| `state/` | 运行状态：`inbox.toml`（收件箱读到的位置、待重试的链接）、`backfill.toml`（每个收藏夹回填到哪一页、哪些平台已回填完成）、`feishu.toml`（与机器人私聊的会话 ID）等 |
-
-## 开发
+## 参与开发
 
 ```powershell
 uv sync
-uv run pytest
+uv run pytest -q
+$env:PYTHONUTF8 = "0"; uv run pytest -q -p no:cacheprovider   # 也要在非 UTF-8 模式下通过（中文 Windows 默认）
 ```
 
-测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、飞书事件长连接、转写引擎、凭据提供者五个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，抖音适配器用按 F2 返回结构构造的样本（`tests/fixtures/douyin/`，测试不需要安装 F2），飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
+- 领域术语：[CONTEXT.md](CONTEXT.md)
+- 架构决策：[docs/adr/](docs/adr/)
+- 完整行为说明：[使用手册](docs/使用手册.md)
 
-faster-whisper 的集成测试（`tests/test_faster_whisper.py`，测试音频为 Windows 语音合成的一段中文）只在本机有 CUDA 显卡、且 `large-v3-turbo` 模型已缓存时运行，否则自动跳过；测试从不下载模型。要运行它，先执行一次 `sub2obsidian transcribe`（或 `uv run python -c "from faster_whisper.utils import download_model; download_model('large-v3-turbo')"`）把模型下载好。
+## 许可证与声明
 
-## 第三方组件
+代码以 [MIT](LICENSE) 许可证开源。
 
-知识库中预装的 [Dataview](https://github.com/blacksmithgu/obsidian-dataview) 插件（0.5.70 release 文件）随包分发于 `src/sub2obsidian/assets/obsidian/plugins/dataview/`，MIT 许可证见同目录 `LICENSE`。
+本项目仅供个人学习与知识管理使用。请只采集你自己账号下的收藏，遵守各平台的用户协议，尊重原作者的版权：采集到的内容只应留在你自己的本地知识库里，不要再分发。
+
+---
+
+如果 sub2obsidian 帮你把收藏夹真正变成了知识，欢迎点一个 ⭐，也欢迎分享给同样「收藏从不看」的朋友。

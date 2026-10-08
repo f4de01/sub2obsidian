@@ -17,10 +17,10 @@ from sub2obsidian.transcript import Segment, Transcript
 
 BV = "BV1GJ411x7h7"
 BV_LINK = f"https://www.bilibili.com/video/{BV}"
-WX_ID = "3888064333_2247499360_1"
+WX_ID = "3000000001_2247480001_1"
 WX_LINK = (
-    "https://mp.weixin.qq.com/s?__biz=Mzg4ODA2NDMzMw==&mid=2247499360&idx=1"
-    "&sn=7f578d217699fabba9d56e29354ce065"
+    "https://mp.weixin.qq.com/s?__biz=MzAwMDAwMDAwMQ==&mid=2247480001&idx=1"
+    "&sn=0123456789abcdef0123456789abcdef"
 )
 SUBTITLES = Transcript(origin="B站 AI 字幕（ai-zh）", segments=[Segment(0.0, 2.0, "大家好")])
 
@@ -41,10 +41,10 @@ def subtitled_video() -> FetchedSource:
 def article() -> FetchedSource:
     return FetchedSource(
         kind="文章",
-        title="通过增强PDF结构识别，革新检索增强生成技术(RAG)",
-        author="北京庖丁科技",
-        published="2024-01-31T14:37:04+08:00",
-        article=Article(markdown="检索增强生成（RAG）可以更好地利用领域专家知识。\n", images=[]),
+        title="示例主题：给阳台菜园做一份浇水日志",
+        author="示例园艺笔记",
+        published="2024-06-01T08:00:00+08:00",
+        article=Article(markdown="浇水日志可以帮助掌握每盆植物的需水规律。\n", images=[]),
     )
 
 

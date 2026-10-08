@@ -25,8 +25,8 @@ PAGE2_TOKEN = json.loads((FIXTURES / "messages_page1.json").read_text(encoding="
 
 SHARED_TEXT = "这个讲得好 [https://b23.tv/AbCd123](https://b23.tv/AbCd123)"
 POST_TEXT = (
-    "公众号这篇值得一看：通过增强PDF结构识别，革新检索增强生成技术(RAG) "
-    "https://mp.weixin.qq.com/s/JJHlJsWEqFG77LdzhvzDNw"
+    "公众号这篇值得一看：示例主题：给阳台菜园做一份浇水日志 "
+    "https://mp.weixin.qq.com/s/ExampleShortLinkCode01"
 )
 APP_SHARE_TEXT = "【RAG 讲解-哔哩哔哩】 https://b23.tv/XyZ7890"
 LAST = "1759900300321:om_4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b"
