@@ -204,6 +204,16 @@ sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源�
 - `mark-compiled` 不单独提交 git：来源状态的改动由 agent 与 Wiki 的改动一起放进本次编译的提交。
 - Schema 初始化后归知识库所有；想改进编译质量就改知识库里的 Schema，重跑 `init` 不会覆盖它。
 
+## 问询、存档与全库体检
+
+同样在知识库目录的 agent 会话里进行，按 Schema 执行，不需要命令：
+
+- **问询**：直接提问（如「做企业内部知识库问答，该用 RAG 还是微调？」）。agent 先读 `index.md` 定位页面，只用知识库里的内容回答，每条论断带出处（B站 出处可跳到原视频对应秒数）；Wiki 之外的补充会单独标明。问询不写入任何文件。
+- **存档**：对某个回答说「存档」，agent 把它沉淀为 `Wiki/综述/` 下的**综述页**（跨概念的比较或总结，同样带出处，不含 Wiki 之外的补充），链接到主题域入口页与相关概念页，更新 `index.md` 与 `log.md`，以一次 git 提交（`存档: …`）结束。
+- **全库体检**：说「体检」，agent 检查全部 Wiki 页面，找出并修复矛盾、孤立页、重复概念、断链、缺失的概念页，列出待你裁决的分歧，并对 Schema 提出改进建议，以一次 git 提交（`体检: …`）结束。Schema 改进建议由你决定是否采纳；采纳的由 agent 同步改进 `CLAUDE.md` 与 `AGENTS.md` 并单独提交（`Schema: …`）。裁决分歧的方式是在分歧下写一条 `> [!我]` 批注或在「我的笔记」里写下判断，下次编译或体检时生效。
+
+用旧版 Schema 初始化的知识库不会自动获得这些流程（`init` 不覆盖已有的 Schema）：可以把本仓库的 `src/sub2obsidian/assets/schema_template.md`（`$raw_dir`、`$syntheses_dir` 等占位符即 `原始材料`、`Wiki/综述` 等目录）中的「综述页」「问询流程」「存档流程」「全库体检流程」各节合并进知识库的 `CLAUDE.md` 与 `AGENTS.md`。
+
 ## 用户配置目录
 
 所有本机配置、凭据与运行状态都放在 `%APPDATA%\sub2obsidian\`，绝不进入知识库或任何 git 仓库：
