@@ -6,6 +6,7 @@
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D6?logo=windows&logoColor=white)
 ![Obsidian](https://img.shields.io/badge/Obsidian-LLM%20Wiki-7C3AED?logo=obsidian&logoColor=white)
 ![Claude Code](https://img.shields.io/badge/Agent-Claude%20Code-D97757)
+![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
 > 收藏 ≠ 学会。你收藏了几百条「AI 必学」「一条视频讲透」，它们散落在三个 App 里，搜不到、对不上、过两个月还可能被删。
 >
@@ -45,7 +46,9 @@
 - 抖音不支持按秒跳转，出处就写时间戳文本。
 - 「上下文窗口」是另一个概念页，Wiki 内部全部用 Obsidian 双链连起来。
 
-在 Obsidian 的关系图谱里，知识按「主题域 → 子主题 → 概念 → 来源」分层并着色；在标签面板里可以按 `AI/AI编程工作流` 这样逐层展开。
+在 Obsidian 的关系图谱里，知识按「主题域 → 子主题 → 概念 → 来源」分层并着色。下图是验收时用 16 条真实收藏（B站、抖音、公众号）编译出的知识库：橙色是主题域，粉色是子主题，蓝色是概念，灰色是来源，绿色是综述。在标签面板里还可以按 `AI/AI编程工作流` 这样逐层展开。
+
+![由 16 条收藏编译出的知识库关系图谱](docs/images/graph.png)
 
 除了编译，你还可以直接向知识库**提问**。回答只基于你收藏过的内容、逐条带出处；满意的回答说一句「存档」，就沉淀成一篇综述页。隔一段时间说一句「体检」，agent 会逐条核对所有出处、修断链、合并重复概念，并给出改进建议。
 
@@ -181,7 +184,9 @@ $env:PYTHONUTF8 = "0"; uv run pytest -q -p no:cacheprovider   # 也要在非 UTF
 - 架构决策：[docs/adr/](docs/adr/)
 - 完整行为说明：[使用手册](docs/使用手册.md)
 
-## 声明
+## 许可证与声明
+
+代码以 [MIT](LICENSE) 许可证开源。
 
 本项目仅供个人学习与知识管理使用。请只采集你自己账号下的收藏，遵守各平台的用户协议，尊重原作者的版权：采集到的内容只应留在你自己的本地知识库里，不要再分发。
 

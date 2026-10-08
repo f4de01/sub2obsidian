@@ -3,6 +3,8 @@ name = "sub2obsidian"
 version = "0.1.0"
 description = "把抖音、B站、公众号收藏采集成原始材料，并交给 agent 编译成 Obsidian LLM Wiki 知识库"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "av>=15,<19",
