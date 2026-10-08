@@ -17,11 +17,11 @@ from pathlib import Path
 
 import tomli_w
 
-from sub2obsidian.capture import Outcome, collect, register
+from sub2obsidian.capture import Outcome, already_registered, collect, label, register
 from sub2obsidian.inbox import Inbox, InboxError, InboxNotConfigured
 from sub2obsidian.links import UnsupportedLink, extract_urls
 from sub2obsidian.platforms import AdapterError, FetchFailed, PlatformAdapter
-from sub2obsidian.sources import Source, SourceRepository, Status
+from sub2obsidian.sources import SourceRepository, Status
 from sub2obsidian.transcription import Transcriber, transcribe_collected
 
 INBOX_STATE_FILE = "inbox.toml"
@@ -104,7 +104,7 @@ def _read_inbox(
         if created:
             yield Outcome(f"新来源：{source.ref.display}", ok=True, changed=source, new=True)
         elif source.status is not Status.APPROVED:
-            yield Outcome(f"来源已存在：{source.title}（{source.ref.display}），{source.status}", ok=True)
+            yield already_registered(source)
     # 消息已全部变成来源（或待重试的链接）之后才前移游标：中途出错时下次重读，登记去重
     InboxState(cursor, retry).save(state_file)
 
@@ -122,12 +122,8 @@ def summarize(outcomes: Sequence[Outcome]) -> str:
     unavailable = [s for s in final.values() if s.status is Status.UNAVAILABLE]
     if unavailable:
         lines.append("已失效：")
-        lines += [f"  - {_name(s)}：{s.meta['失败原因']}" for s in unavailable]
+        lines += [f"  - {label(s)}：{s.meta['失败原因']}" for s in unavailable]
     if failures:
         lines.append("失败及原因：")
         lines += [f"  - {message}" for message in failures]
     return "\n".join(lines)
-
-
-def _name(source: Source) -> str:
-    return " ".join(filter(None, [source.ref.display, source.meta["标题"]]))

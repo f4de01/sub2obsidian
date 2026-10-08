@@ -51,7 +51,7 @@ def commit_changes(
     changed = list(by_directory.values())
     if not changed:
         return
-    lines = [" ".join(filter(None, [s.ref.display, s.meta["标题"]])) for s in changed]
+    lines = [label(source) for source in changed]
     if len(lines) == 1:
         message = f"{command}: {lines[0]}"
     else:
@@ -70,8 +70,17 @@ def _capture_url(
         return Outcome(str(error), ok=False)
     if source.status is not Status.APPROVED:
         # 只有停在「已通过」的来源（上次采集失败）才重试
-        return Outcome(f"来源已存在：{source.title}（{source.ref.display}），{source.status}", ok=True)
+        return already_registered(source)
     return collect(source, repo, adapters[source.ref.platform])
+
+
+def label(source: Source) -> str:
+    """「平台 平台内ID 标题」：git 提交说明与汇总中指称一个来源。"""
+    return " ".join(filter(None, [source.ref.display, source.meta["标题"]]))
+
+
+def already_registered(source: Source) -> Outcome:
+    return Outcome(f"来源已存在：{source.title}（{source.ref.display}），{source.status}", ok=True)
 
 
 def register(
