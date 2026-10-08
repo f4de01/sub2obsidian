@@ -14,7 +14,7 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 RAW_DIR = "原始材料"
 WIKI_DIR = "Wiki"

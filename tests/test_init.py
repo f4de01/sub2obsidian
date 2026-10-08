@@ -287,7 +287,11 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "Schema 模板（版本 7）" in schema
+    assert "Schema 模板（版本 8）" in schema
+    # 版本 8 采纳的体检建议：漏标的无口播、简介与封面出处、只在某个同内容版本里出现的说法
+    assert "只有背景音乐歌词的视频，同样按无口播处理" in schema
+    assert "`（[[来源页]] 简介）`" in schema
+    assert "只在某个版本里出现的说法" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
     # 批注 callout 不得改动
