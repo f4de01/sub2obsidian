@@ -284,8 +284,15 @@ def _image_urls(detail: dict[str, Any]) -> list[str]:
 
 
 def _play_urls(video: dict[str, Any]) -> list[str]:
-    """转写只要音轨：取码率最低的一档（同一档的多个地址依次尝试），没有分档时用 play_addr。"""
-    gears = [gear for gear in video.get("bit_rate") or [] if _url_list(gear.get("play_addr"))]
+    """转写只要音轨：取码率最低的一档（同一档的多个地址依次尝试），没有分档时用 play_addr。
+
+    dash 档只有画面没有音轨，不能用来提取音频。
+    """
+    gears = [
+        gear
+        for gear in video.get("bit_rate") or []
+        if _url_list(gear.get("play_addr")) and gear.get("format") != "dash"
+    ]
     if gears:
         smallest = min(gears, key=lambda gear: gear.get("bit_rate") or 0)
         return _url_list(smallest["play_addr"])
