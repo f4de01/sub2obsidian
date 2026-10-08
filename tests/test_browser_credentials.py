@@ -1,0 +1,165 @@
+"""凭据提供者（Playwright 持久化浏览器配置）的契约测试。
+
+浏览器本身由回放 Playwright `context.cookies()` 形态样本的假浏览器替代，不启动 Chromium。
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from http.cookiejar import MozillaCookieJar
+from pathlib import Path
+
+import pytest
+
+from sub2obsidian.browser_credentials import BrowserCredentials
+from sub2obsidian.config import UserConfig
+from sub2obsidian.credentials import LoginRequired
+
+IN_A_MONTH = time.time() + 30 * 86400
+
+
+def playwright_cookie(name: str, value: str, *, domain=".bilibili.com", expires=IN_A_MONTH, **extra):
+    """Playwright BrowserContext.cookies() 返回的单个 cookie 形态。"""
+    return {
+        "name": name,
+        "value": value,
+        "domain": domain,
+        "path": "/",
+        "expires": expires,
+        "httpOnly": name == "SESSDATA",
+        "secure": name == "SESSDATA",
+        "sameSite": "Lax",
+        **extra,
+    }
+
+
+LOGGED_IN = [
+    playwright_cookie("SESSDATA", "abc%2C123%2Cdef"),
+    playwright_cookie("bili_jct", "csrf-token"),
+    playwright_cookie("DedeUserID", "10000001"),
+    playwright_cookie("buvid3", "visitor", expires=-1),  # 会话 cookie
+    playwright_cookie("other", "x", domain=".example.com"),
+]
+
+
+@dataclass
+class FakeBrowser:
+    """记录登录与读取所用的浏览器配置目录；cookies 按配置目录保存。"""
+
+    stored: dict[Path, list[dict]] = field(default_factory=dict)
+    on_login: list[dict] = field(default_factory=lambda: list(LOGGED_IN))
+    logins: list[tuple[Path, str]] = field(default_factory=list)
+
+    def login(self, profile: Path, url: str, logged_in) -> list[dict]:
+        self.logins.append((profile, url))
+        profile.mkdir(parents=True, exist_ok=True)
+        self.stored[profile] = self.on_login
+        assert logged_in(self.on_login)
+        return self.on_login
+
+    def cookies(self, profile: Path) -> list[dict]:
+        return self.stored.get(profile, [])
+
+
+@pytest.fixture
+def user_config() -> UserConfig:
+    return UserConfig.default()  # %APPDATA% 已由 conftest 指向临时目录
+
+
+def load_jar(path: Path) -> MozillaCookieJar:
+    jar = MozillaCookieJar(str(path))
+    jar.load(ignore_discard=True, ignore_expires=True)
+    return jar
+
+
+def test_login_uses_persistent_profile_in_user_config_dir(user_config):
+    browser = FakeBrowser()
+
+    BrowserCredentials(user_config, browser).login("bilibili")
+
+    profile, url = browser.logins[0]
+    assert profile == user_config.browser_profile_dir("bilibili")
+    assert url.startswith("https://passport.bilibili.com/login")
+
+
+def test_cookies_file_exports_netscape_cookies_for_ytdlp(user_config):
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+
+    path = credentials.cookies_file("bilibili")
+
+    assert path.parent == user_config.credentials_dir
+    jar = load_jar(path)
+    cookies = {cookie.name: cookie for cookie in jar}
+    assert set(cookies) == {"SESSDATA", "bili_jct", "DedeUserID", "buvid3"}
+    assert cookies["SESSDATA"].value == "abc%2C123%2Cdef"
+    assert cookies["SESSDATA"].domain == ".bilibili.com"
+    assert cookies["SESSDATA"].secure
+    assert cookies["buvid3"].expires is None  # 会话 cookie
+
+
+def test_cookies_are_reexported_from_the_profile_each_time(user_config):
+    """B站 会轮换 cookie：以浏览器配置为准，而不是登录时导出的旧文件。"""
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+    profile = user_config.browser_profile_dir("bilibili")
+    browser.stored[profile] = [playwright_cookie("SESSDATA", "rotated")]
+
+    path = credentials.cookies_file("bilibili")
+
+    assert {cookie.name: cookie.value for cookie in load_jar(path)} == {"SESSDATA": "rotated"}
+
+
+def test_never_logged_in_asks_to_log_in(user_config):
+    with pytest.raises(LoginRequired, match="请重新登录 B站：sub2obsidian login bilibili"):
+        BrowserCredentials(user_config, FakeBrowser()).cookies_file("bilibili")
+
+
+@pytest.mark.parametrize(
+    "cookies",
+    [
+        pytest.param([], id="cookie被清空"),
+        pytest.param([playwright_cookie("SESSDATA", "old", expires=time.time() - 60)], id="已过期"),
+        pytest.param([playwright_cookie("buvid3", "visitor")], id="只有访客cookie"),
+    ],
+)
+def test_expired_or_missing_session_cookie_asks_to_log_in_again(user_config, cookies):
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+    browser.stored[user_config.browser_profile_dir("bilibili")] = cookies
+
+    with pytest.raises(LoginRequired, match="请重新登录 B站"):
+        credentials.cookies_file("bilibili")
+
+
+def test_login_that_never_completes_is_reported(user_config):
+    browser = FakeBrowser(on_login=[playwright_cookie("buvid3", "visitor")])
+
+    def login(profile, url, logged_in):
+        assert not logged_in(browser.on_login)
+        return browser.on_login
+
+    browser.login = login  # 用户关掉了登录窗口，没有扫码
+
+    with pytest.raises(LoginRequired):
+        BrowserCredentials(user_config, browser).login("bilibili")
+
+
+def test_credentials_are_written_only_to_user_config_dir_even_when_run_inside_vault(
+    user_config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """agent 在知识库目录中调用 CLI：相对路径也绝不能把凭据写进知识库。"""
+    vault = tmp_path / "知识库"
+    vault.mkdir()
+    monkeypatch.chdir(vault)
+    credentials = BrowserCredentials(user_config, FakeBrowser())
+
+    credentials.login("bilibili")
+    credentials.cookies_file("bilibili")
+
+    assert list(vault.rglob("*")) == []
+    assert (user_config.credentials_dir / "bilibili.cookies.txt").is_file()

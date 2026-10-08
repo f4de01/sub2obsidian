@@ -1,0 +1,32 @@
+{
+  "id": "BV1GJ411x7h7",
+  "title": "【官方 MV】Never Gonna Give You Up - Rick Astley",
+  "uploader": "索尼音乐中国",
+  "uploader_id": "486906719",
+  "description": "-",
+  "timestamp": 1577835803,
+  "upload_date": "20191231",
+  "duration": 212.393,
+  "thumbnail": "http://i1.hdslb.com/bfs/archive/5242750857121e05146d5d5b13a47a2a6dd36e98.jpg",
+  "tags": [
+    "发现《Never gonna give you up》",
+    "Never Gonna Give You Up",
+    "Rick Astley",
+    "MV",
+    "欧美MV",
+    "流行音乐",
+    "欧美音乐"
+  ],
+  "chapters": null,
+  "subtitles": {
+    "danmaku": [
+      {
+        "ext": "xml",
+        "url": "https://comment.bilibili.com/137649199.xml"
+      }
+    ]
+  },
+  "webpage_url": "https://www.bilibili.com/video/BV1GJ411x7h7",
+  "extractor": "BiliBili",
+  "_type": "video"
+}

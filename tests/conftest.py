@@ -1,4 +1,7 @@
-"""行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。"""
+"""行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。
+
+四个外部端口中，本文件提供平台适配器与凭据提供者的假实现（收件箱、转写引擎随后续工单加入）。
+"""
 
 from __future__ import annotations
 
@@ -9,6 +12,10 @@ import pytest
 from click.testing import CliRunner, Result
 
 from sub2obsidian.cli import Ports, cli
+from sub2obsidian.config import UserConfig
+from sub2obsidian.credentials import LoginRequired
+from sub2obsidian.links import SourceRef
+from sub2obsidian.platforms import FetchedSource, FetchFailed, SourceUnavailable
 
 
 @dataclass
@@ -22,13 +29,72 @@ class FakeLauncher:
 
 
 @dataclass
+class FakeCredentials:
+    """替换 Playwright 凭据提供者：登录即在用户配置目录写一份 cookies.txt。"""
+
+    secret: str = "SESSDATA-假的会话密钥-0123456789"
+    logged_in: set[str] = field(default_factory=set)
+    logins: list[str] = field(default_factory=list)
+
+    def _cookies_path(self, platform: str) -> Path:
+        return UserConfig.default().credentials_dir / f"{platform}.cookies.txt"
+
+    def login(self, platform: str) -> None:
+        self.logins.append(platform)
+        self.logged_in.add(platform)
+        path = self._cookies_path(platform)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f".bilibili.com\tTRUE\t/\tTRUE\t0\tSESSDATA\t{self.secret}\n", encoding="utf-8")
+
+    def cookies_file(self, platform: str) -> Path:
+        if platform not in self.logged_in:
+            raise LoginRequired(platform)
+        return self._cookies_path(platform)
+
+
+@dataclass
+class FakeBilibili:
+    """替换 B站 适配器：按 BV 号返回预置的采集结果，并记录每次采集。
+
+    要求登录：未经 FakeCredentials 登录时，采集报「请重新登录」。
+    """
+
+    credentials: FakeCredentials
+    platform: str = "bilibili"
+    videos: dict[str, FetchedSource] = field(default_factory=dict)
+    unavailable: dict[str, str] = field(default_factory=dict)
+    failures: dict[str, str] = field(default_factory=dict)
+    short_links: dict[str, str] = field(default_factory=dict)
+    fetched: list[str] = field(default_factory=list)
+
+    def expand_short_link(self, url: str) -> str:
+        if url not in self.short_links:
+            raise FetchFailed(f"短链解析失败：{url}")
+        return self.short_links[url]
+
+    def fetch(self, ref: SourceRef) -> FetchedSource:
+        self.credentials.cookies_file(self.platform)
+        self.fetched.append(ref.platform_id)
+        if ref.platform_id in self.failures:
+            raise FetchFailed(self.failures.pop(ref.platform_id))
+        if ref.platform_id in self.unavailable:
+            raise SourceUnavailable(self.unavailable[ref.platform_id])
+        return self.videos[ref.platform_id]
+
+
+@dataclass
 class Cli:
     launcher: FakeLauncher
+    credentials: FakeCredentials
+    bilibili: FakeBilibili
 
     def run(self, *args: str) -> Result:
-        return CliRunner().invoke(
-            cli, list(args), obj=Ports(launcher=self.launcher), catch_exceptions=False
+        ports = Ports(
+            launcher=self.launcher,
+            credentials=self.credentials,
+            adapters={"bilibili": self.bilibili},
         )
+        return CliRunner().invoke(cli, list(args), obj=ports, catch_exceptions=False)
 
 
 @pytest.fixture(autouse=True)
@@ -46,8 +112,18 @@ def launcher() -> FakeLauncher:
 
 
 @pytest.fixture
-def run(launcher: FakeLauncher) -> Cli:
-    return Cli(launcher=launcher)
+def credentials() -> FakeCredentials:
+    return FakeCredentials()
+
+
+@pytest.fixture
+def bilibili(credentials: FakeCredentials) -> FakeBilibili:
+    return FakeBilibili(credentials=credentials)
+
+
+@pytest.fixture
+def run(launcher: FakeLauncher, credentials: FakeCredentials, bilibili: FakeBilibili) -> Cli:
+    return Cli(launcher=launcher, credentials=credentials, bilibili=bilibili)
 
 
 @pytest.fixture

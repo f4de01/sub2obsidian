@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
 import click
 
+from sub2obsidian.capture import capture_text, commit_changes
 from sub2obsidian.config import UserConfig
+from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
 from sub2obsidian.git import GitError
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
-from sub2obsidian.vault import init_vault
+from sub2obsidian.links import PLATFORM_NAMES
+from sub2obsidian.platforms import PlatformAdapter
+from sub2obsidian.vault import RAW_DIR, init_vault
 
 
 @dataclass
@@ -18,6 +23,8 @@ class Ports:
     """CLI 依赖的外部端口；行为测试中整体替换为假实现。"""
 
     launcher: Launcher
+    credentials: CredentialProvider
+    adapters: Mapping[str, PlatformAdapter]  # 平台 → 平台适配器
 
 
 @click.group()
@@ -52,5 +59,57 @@ def init(ports: Ports, path: Path | None) -> None:
     click.echo("已请求 Obsidian 打开该知识库")
 
 
+@cli.command()
+@click.argument("platform", type=click.Choice(sorted(LOGIN_PLATFORMS)))
+@click.pass_obj
+def login(ports: Ports, platform: str) -> None:
+    """打开 PLATFORM 的登录页扫码登录；登录状态保存在用户配置目录，可复用。"""
+    try:
+        ports.credentials.login(platform)
+    except CredentialError as error:
+        raise click.ClickException(str(error)) from error
+    click.echo(f"已登录 {PLATFORM_NAMES[platform]}，凭据保存在用户配置目录（不会进入知识库）")
+
+
+def _initialized_vault(path: Path | None) -> Path:
+    vault = (path or UserConfig.default().vault()).resolve()
+    if not (vault / RAW_DIR).is_dir():
+        raise click.ClickException(f"知识库尚未初始化：{vault}，请先执行 sub2obsidian init")
+    return vault
+
+
+@cli.command()
+@click.argument("text", nargs=-1, required=True)
+@click.option(
+    "--vault",
+    "vault_path",
+    type=click.Path(path_type=Path),
+    help="知识库路径；缺省取用户配置中的知识库。",
+)
+@click.pass_obj
+def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> None:
+    """采集链接或分享文本中的来源（推送来的来源视为已通过筛选）。"""
+    vault = _initialized_vault(vault_path)
+    outcomes = capture_text(" ".join(text), vault, ports.adapters)
+    for outcome in outcomes:
+        click.echo(outcome.message, err=not outcome.ok)
+    try:
+        commit_changes(vault, outcomes)
+    except GitError as error:
+        raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
+    if not all(outcome.ok for outcome in outcomes):
+        raise SystemExit(1)
+
+
 def main() -> None:
-    cli(obj=Ports(launcher=SystemLauncher()))
+    from sub2obsidian.bilibili import BilibiliAdapter
+    from sub2obsidian.browser_credentials import BrowserCredentials
+
+    credentials = BrowserCredentials(UserConfig.default())
+    cli(
+        obj=Ports(
+            launcher=SystemLauncher(),
+            credentials=credentials,
+            adapters={"bilibili": BilibiliAdapter(credentials)},
+        )
+    )
