@@ -8,34 +8,34 @@ from raw import read_metadata, source_dir, source_dirs
 from vault_git import git
 from sub2obsidian.platforms import Article, Asset, FetchedSource
 
-BIZ = "Mzg4ODA2NDMzMw=="  # base64("3888064333")
-MID = "2247499360"
+BIZ = "MzAwMDAwMDAwMQ=="  # base64("3000000001")
+MID = "2247480001"
 IDX = "1"
-SN = "7f578d217699fabba9d56e29354ce065"
-ID = "3888064333_2247499360_1"
+SN = "0123456789abcdef0123456789abcdef"
+ID = "3000000001_2247480001_1"
 CANONICAL = f"https://mp.weixin.qq.com/s?__biz={BIZ}&mid={MID}&idx={IDX}&sn={SN}"
-SHORT = "https://mp.weixin.qq.com/s/JJHlJsWEqFG77LdzhvzDNw"
+SHORT = "https://mp.weixin.qq.com/s/ExampleShortLinkCode01"
 
 COVER = b"\xff\xd8\xff\xe0 fake cover"
 FIGURE_1 = b"\x89PNG\r\n\x1a\n fake figure 1"
 FIGURE_2 = b"\xff\xd8\xff\xe0 fake figure 2"
-TITLE = "通过增强PDF结构识别，革新检索增强生成技术(RAG)"
+TITLE = "示例主题：给阳台菜园做一份浇水日志"
 
 
 def article() -> FetchedSource:
     return FetchedSource(
         kind="文章",
         title=TITLE,
-        author="北京庖丁科技",
-        published="2024-01-31T14:37:04+08:00",
-        description="ChatDOC PDF解析器显著提升了RAG系统的回答效果。",
+        author="示例园艺笔记",
+        published="2024-06-01T08:00:00+08:00",
+        description="这是一篇用于契约测试的虚构示例文章。",
         cover=Asset(name="封面.jpg", data=COVER),
-        byline="创新而务实的",
+        byline="示例作者",
         article=Article(
             markdown=(
-                "**摘要**\n\n检索增强生成（RAG）可以更好地利用领域专家知识。\n\n"
-                "![](图01.png)\n\n**图 1** 检索增强生成的工作流\n\n"
-                "## PDF 解析和分块\n\n![](图02.jpg)\n"
+                "**摘要**\n\n浇水日志可以帮助掌握每盆植物的需水规律。\n\n"
+                "![](图01.png)\n\n**图 1** 示例阳台的布局\n\n"
+                "## 记录与整理\n\n![](图02.jpg)\n"
             ),
             images=[Asset(name="图01.png", data=FIGURE_1), Asset(name="图02.jpg", data=FIGURE_2)],
         ),
@@ -61,9 +61,9 @@ def test_capture_article_lands_markdown_body_local_images_and_metadata(run, wech
     assert meta["规范链接"] == CANONICAL
     assert meta["类型"] == "文章"
     assert meta["标题"] == TITLE
-    assert meta["作者"] == "北京庖丁科技"  # 公众号名
-    assert meta["署名"] == "创新而务实的"  # 原文署名作者
-    assert meta["发布时间"] == "2024-01-31T14:37:04+08:00"
+    assert meta["作者"] == "示例园艺笔记"  # 公众号名
+    assert meta["署名"] == "示例作者"  # 原文署名作者
+    assert meta["发布时间"] == "2024-06-01T08:00:00+08:00"
     assert meta["时长"] is None
     assert meta["采集途径"] == "推送"
     assert meta["来源状态"] == "已采集"
@@ -74,10 +74,10 @@ def test_capture_article_lands_markdown_body_local_images_and_metadata(run, wech
     assert (directory / "图02.jpg").read_bytes() == FIGURE_2
     body = (directory / "正文.md").read_text(encoding="utf-8")
     assert body.startswith(f"# {TITLE}\n")
-    assert "公众号：北京庖丁科技" in body
-    assert "作者：创新而务实的" in body
+    assert "公众号：示例园艺笔记" in body
+    assert "作者：示例作者" in body
     assert f"[原文]({CANONICAL})" in body
-    assert "检索增强生成（RAG）可以更好地利用领域专家知识。" in body
+    assert "浇水日志可以帮助掌握每盆植物的需水规律。" in body
     assert "![](图01.png)" in body
     assert "![](图02.jpg)" in body
     assert "已采集" in result.output
@@ -113,14 +113,14 @@ def test_capture_commits_body_images_and_metadata_on_their_own(run, wechat, init
     [
         pytest.param(CANONICAL, id="长链接"),
         pytest.param(SHORT, id="短码链接"),
-        pytest.param(f"{SHORT}?scene=1&poc_token=HBRzx2qjaW4mfCp5vUEqkjfifiAvdVj7", id="短码带参数"),
+        pytest.param(f"{SHORT}?scene=1&poc_token=HBExamplePocToken000000000000000", id="短码带参数"),
         pytest.param(
             f"https://mp.weixin.qq.com/s?__biz={BIZ}&mid={MID}&idx={IDX}&sn={SN}"
             "&chksm=c3e0a1b2f4d5e6c7d8&scene=21#wechat_redirect",
             id="长链接带追踪参数",
         ),
         pytest.param(
-            f"https://mp.weixin.qq.com/s/?__biz=Mzg4ODA2NDMzMw%3D%3D&amp;mid={MID}&amp;idx={IDX}"
+            f"https://mp.weixin.qq.com/s/?__biz=MzAwMDAwMDAwMQ%3D%3D&amp;mid={MID}&amp;idx={IDX}"
             f"&amp;sn={SN}#rd",
             id="网页复制的转义长链接",
         ),

@@ -19,7 +19,7 @@
                     "tenant_key": "736588c9260f175e"
                 },
                 "body": {
-                    "content": "{\"title\": \"\", \"content\": [[{\"tag\": \"text\", \"text\": \"公众号这篇值得一看：\", \"style\": []}, {\"tag\": \"a\", \"href\": \"https://mp.weixin.qq.com/s/JJHlJsWEqFG77LdzhvzDNw\", \"text\": \"通过增强PDF结构识别，革新检索增强生成技术(RAG)\", \"style\": []}], [{\"tag\": \"img\", \"image_key\": \"img_47354fbc-a159-40ed-86ab-2ad0f1acb42g\"}]]}"
+                    "content": "{\"title\": \"\", \"content\": [[{\"tag\": \"text\", \"text\": \"公众号这篇值得一看：\", \"style\": []}, {\"tag\": \"a\", \"href\": \"https://mp.weixin.qq.com/s/ExampleShortLinkCode01\", \"text\": \"示例主题：给阳台菜园做一份浇水日志\", \"style\": []}], [{\"tag\": \"img\", \"image_key\": \"img_47354fbc-a159-40ed-86ab-2ad0f1acb42g\"}]]}"
                 }
             },
             {

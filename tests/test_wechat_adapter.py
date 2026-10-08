@@ -1,4 +1,4 @@
-"""公众号文章适配器的契约测试：用录制的真实网页样本回放网络层。
+"""公众号文章适配器的契约测试：用网页样本（文章页按真实页面结构构造，其余为录制）回放网络层。
 
 样本说明见 tests/fixtures/wechat/README.md。
 """
@@ -16,16 +16,16 @@ from sub2obsidian.platforms import FetchFailed, SourceUnavailable
 from sub2obsidian.wechat import Page, ResourceGone, WechatAdapter
 
 FIXTURES = Path(__file__).parent / "fixtures" / "wechat"
-SHORT = "https://mp.weixin.qq.com/s/JJHlJsWEqFG77LdzhvzDNw"
+SHORT = "https://mp.weixin.qq.com/s/ExampleShortLinkCode01"
 LONG = (
-    "https://mp.weixin.qq.com/s?__biz=Mzg4ODA2NDMzMw==&mid=2247499360&idx=1"
-    "&sn=7f578d217699fabba9d56e29354ce065"
+    "https://mp.weixin.qq.com/s?__biz=MzAwMDAwMDAwMQ==&mid=2247480001&idx=1"
+    "&sn=0123456789abcdef0123456789abcdef"
 )
-REF = SourceRef("wechat", "3888064333_2247499360_1", LONG)
+REF = SourceRef("wechat", "3000000001_2247480001_1", LONG)
 CAPTCHA_URL = (
-    "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=HB9zx2qj1q4aWWO9-IcPCx09_xHKBdje9U7wn1Wy"
-    "&target_url=https%3A%2F%2Fmp.weixin.qq.com%2Fs%3F__biz%3DMzI2NDk5NzA0Mw%3D%3D%26mid%3D2248578566"
-    "%26idx%3D3%26sn%3D5a0a133b6985bd3cc22f01e073350548"
+    "https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=HBExamplePocTokenForContractTests0000000"
+    "&target_url=https%3A%2F%2Fmp.weixin.qq.com%2Fs%3F__biz%3DMzAwMDAwMDAwMg%3D%3D%26mid%3D2247490002"
+    "%26idx%3D3%26sn%3Dfedcba9876543210fedcba9876543210"
 )
 
 
@@ -59,14 +59,14 @@ def test_fetch_maps_article_page_to_source_metadata():
     fetched = WechatAdapter(ReplayClient()).fetch(REF)
 
     assert fetched.kind == "文章"
-    assert fetched.title == "通过增强PDF结构识别，革新检索增强生成技术(RAG)"
-    assert fetched.author == "北京庖丁科技"  # 公众号名
-    # ct = 1706683024 = 2024-01-31T06:37:04Z
-    assert fetched.published == "2024-01-31T14:37:04+08:00"
-    assert fetched.description == "ChatDOC PDF解析器显著提升了RAG系统的回答效果，提高了大模型输出质量。"
+    assert fetched.title == "示例主题：给阳台菜园做一份浇水日志"
+    assert fetched.author == "示例园艺笔记"  # 公众号名
+    # ct = 1717200000 = 2024-06-01T00:00:00Z
+    assert fetched.published == "2024-06-01T08:00:00+08:00"
+    assert fetched.description == "这是一篇用于契约测试的虚构示例文章：给阳台菜园做一份浇水日志。"
     assert fetched.duration is None
     assert fetched.transcript is None
-    assert fetched.byline == "创新而务实的"
+    assert fetched.byline == "示例作者"
     assert fetched.article is not None
 
 
@@ -75,10 +75,7 @@ def test_cover_is_downloaded_from_the_article_cover_image():
 
     fetched = WechatAdapter(client).fetch(REF)
 
-    cover_url = (
-        "https://mmbiz.qpic.cn/sz_mmbiz_jpg/6K08qSpsib2ib0pM0QffSNw6y79mKTgyfEGEyJica7L7nJzHV5Mww3Da1KKJ"
-        "xaUia56iapcnzbUBjWTk4PrJic99CWHQ/0?wx_fmt=jpeg"
-    )
+    cover_url = "https://mmbiz.qpic.cn/sz_mmbiz_jpg/ExampleFixtureCover00/0?wx_fmt=jpeg"
     assert fetched.cover is not None
     assert fetched.cover.name == "封面.jpg"
     assert fetched.cover.data == b"image:" + cover_url.encode()
@@ -95,13 +92,13 @@ def test_body_is_markdown_with_images_rewritten_to_local_files():
     markdown = article.markdown
     assert "<section" not in markdown and "<span" not in markdown
     assert "mmbiz.qpic.cn" not in markdown  # 没有残留微信图床地址
-    assert "检索增强生成" in markdown
+    assert "浇水日志" in markdown
     assert "**摘要**" in markdown
     # 小节标题各占一行；排版工具留下的空装饰标题（<h2>&nbsp;</h2>）不留空的「##」
-    assert re.search(r"^\*\*PDF 解析和分块\*\*$", markdown, re.M)
-    assert re.search(r"^难点和解决方法$", markdown, re.M)
+    assert re.search(r"^\*\*记录与整理\*\*$", markdown, re.M)
+    assert re.search(r"^常见问题和应对办法$", markdown, re.M)
     assert not re.search(r"^#+\s*$", markdown, re.M)
-    assert re.search(r"^- \*\*文档解析和文本切分", markdown, re.M)  # 列表
+    assert re.search(r"^- \*\*土壤湿度记录", markdown, re.M)  # 列表
     names = [image.name for image in article.images]
     assert len(names) == len(set(names)) >= 10
     assert names[:2] == ["图01.png", "图02.jpg"]  # 后缀取自图床的 wx_fmt
@@ -152,7 +149,7 @@ def test_short_link_expands_to_the_long_link_and_the_page_is_reused_for_fetching
     fetched = adapter.fetch(REF)
 
     assert target == LONG
-    assert fetched.title == "通过增强PDF结构识别，革新检索增强生成技术(RAG)"
+    assert fetched.title == "示例主题：给阳台菜园做一份浇水日志"
     assert client.pages == [SHORT]  # 采集时不再打开第二次
 
 
