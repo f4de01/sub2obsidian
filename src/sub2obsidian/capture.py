@@ -117,12 +117,15 @@ def register(
 ) -> tuple[Source, bool]:
     """把链接登记为推送来的来源（直接为「已通过」），返回来源及它是否为本次新建。
 
-    同一来源无论以哪种链接写法提交都只登记一份。链接无法识别时抛 UnsupportedLink，
-    短链解析失败时抛 AdapterError（FetchFailed 可重试）。
+    同一来源无论以哪种链接写法提交都只登记一份。拉取来、还在「待筛」的来源被推送时视为
+    用户已选中，转为「已通过」。链接无法识别时抛 UnsupportedLink，短链解析失败时抛
+    AdapterError（FetchFailed 可重试）。
     """
     ref = normalize(url, lambda platform, short: adapters[platform].expand_short_link(short))
     source = repo.find(ref)
     if source is not None:
+        if source.status is Status.PENDING:
+            repo.transition(source, Status.APPROVED)
         return source, False
     kind = _PLATFORM_KINDS.get(ref.platform, Kind.VIDEO)
     return repo.create(ref, kind=kind, origin=Origin.PUSH, status=Status.APPROVED), True

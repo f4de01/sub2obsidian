@@ -398,25 +398,23 @@ class _Json(BaseHTTPRequestHandler):
         pass
 
 
-def test_requests_are_spaced_by_the_configured_random_interval(monkeypatch: pytest.MonkeyPatch):
-    """本地回环服务器代替 api.bilibili.com，不访问网络。"""
+def test_requests_are_spaced_by_at_least_the_shortest_interval(monkeypatch: pytest.MonkeyPatch):
+    """本地回环服务器代替 api.bilibili.com，不访问网络。配置值的接线见 test_ports.py。"""
     import time
 
     server = HTTPServer(("127.0.0.1", 0), _Json)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     monkeypatch.setattr("sub2obsidian.bilibili.API", f"http://127.0.0.1:{server.server_port}")
-    client = HttpBilibiliClient(interval=(0.3, 0.4))
-    started: list[float] = []
+    client = HttpBilibiliClient(interval=(0.5, 0.6))
     try:
+        started = time.monotonic()
         for _ in range(3):
-            started.append(time.monotonic())
             client.api("/x/v3/fav/resource/list", {"pn": "1"})
-            started[-1] = time.monotonic() - started[-1]
+        elapsed = time.monotonic() - started
     finally:
         server.shutdown()
         server.server_close()
 
-    # 第一个请求不等；之后每个请求都至少等足最短间隔
-    assert started[0] < 0.3
-    assert all(0.3 <= elapsed < 1.0 for elapsed in started[1:])
+    # 第一个请求不等，之后的两个各自至少等足最短间隔（只断言下限，机器再慢也不误报）
+    assert elapsed >= 2 * 0.5

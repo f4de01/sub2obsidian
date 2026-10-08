@@ -436,3 +436,60 @@ def test_invalid_backfill_settings_are_reported_before_anything_changes(
     assert result.exit_code != 0
     assert "config.toml 中 [backfill]" in result.output
     assert source_dirs(vault) == []
+
+
+def test_ticked_entry_with_text_appended_after_the_source_key_is_still_approved(
+    run, bilibili, initialized
+):
+    """Obsidian 的任务插件会在勾选的行末追加完成日期等文字。"""
+    vault = initialized
+    bilibili.favorite_folders[FOLDER] = [favorite(1), favorite(2)]
+    run.run("sync")
+    text = screening_list(vault).replace(
+        f"- [ ] 收藏的视频 1 `bilibili/{bv(1)}`", f"- [x] 收藏的视频 1 `bilibili/{bv(1)}` ✅ 2026-10-08"
+    )
+    (vault / LIST).write_text(text, encoding="utf-8")
+
+    result = run.run("screen")
+
+    assert result.exit_code == 0, result.output
+    assert read_metadata(vault, "bilibili", bv(1))["来源状态"] == "已通过"
+    assert read_metadata(vault, "bilibili", bv(2))["来源状态"] == "已拒绝"
+
+
+def test_pushing_a_link_to_a_pending_source_approves_it_and_takes_it_off_the_list(
+    run, bilibili, inbox, transcriber, initialized
+):
+    vault = initialized
+    bilibili.favorite_folders[FOLDER] = [favorite(1), favorite(2)]
+    run.run("sync")
+    bilibili.videos[bv(1)] = FetchedSource(kind="视频", title="收藏的视频 1", author="UP主1")
+    transcriber.segments[f"audio:{bv(1)}"] = [Segment(0.0, 1.0, "大家好")]
+    inbox.push(f"这个值得看 https://www.bilibili.com/video/{bv(1)}")
+
+    result = run.run("sync")
+
+    assert result.exit_code == 0, result.output
+    meta = read_metadata(vault, "bilibili", bv(1))
+    assert meta["来源状态"] == "已转写"
+    assert meta["采集途径"] == "拉取"  # 先拉取到的，途径不变
+    assert bv(1) not in screening_list(vault)
+    assert f"`bilibili/{bv(2)}`" in screening_list(vault)
+    assert git(vault, "status", "--porcelain") == ""
+
+
+def test_capturing_a_pending_source_approves_it_and_updates_the_list(
+    run, bilibili, transcriber, initialized
+):
+    vault = initialized
+    bilibili.favorite_folders[FOLDER] = [favorite(1), favorite(2)]
+    run.run("sync")
+    bilibili.videos[bv(1)] = FetchedSource(kind="视频", title="收藏的视频 1", author="UP主1")
+    transcriber.segments[f"audio:{bv(1)}"] = [Segment(0.0, 1.0, "大家好")]
+
+    result = run.run("capture", f"https://www.bilibili.com/video/{bv(1)}")
+
+    assert result.exit_code == 0, result.output
+    assert read_metadata(vault, "bilibili", bv(1))["来源状态"] == "已采集"
+    assert bv(1) not in screening_list(vault)
+    assert git(vault, "status", "--porcelain") == ""

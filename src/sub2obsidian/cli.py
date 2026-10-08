@@ -17,7 +17,7 @@ from sub2obsidian.inbox import Inbox
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import PlatformAdapter
-from sub2obsidian.screening import ScreenRefused
+from sub2obsidian.screening import ScreenRefused, update_list
 from sub2obsidian.screening import screen as screen_sources
 from sub2obsidian.screening import summarize as summarize_screening
 from sub2obsidian.sync import summarize as summarize_sync
@@ -150,13 +150,16 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
 
     def capture_then_transcribe() -> Iterator[Outcome]:
         captured: list[Outcome] = []
-        for outcome in capture_text(" ".join(text), vault, ports.adapters):
-            captured.append(outcome)
-            yield outcome
+        try:
+            for outcome in capture_text(" ".join(text), vault, ports.adapters):
+                captured.append(outcome)
+                yield outcome
+        finally:
+            update_list(vault)  # 推送了待筛的来源时，它已转为已通过，离开待筛清单
         yield from transcribe_captured(vault, captured, ports.adapters, ports.transcriber, terms)
 
     outcomes, stopped = _run_batch(
-        vault, capture_then_transcribe(), command="capture", verb="采集"
+        vault, capture_then_transcribe(), command="capture", verb="采集", also=[SCREENING_LIST]
     )
     if stopped is not None:
         raise click.ClickException(f"capture 中止：{stopped}")
