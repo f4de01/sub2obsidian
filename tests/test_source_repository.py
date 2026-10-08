@@ -1,7 +1,8 @@
 """来源仓储：来源状态按状态机转换，非法转换被拒绝且不改动原始材料。
 
 状态机（规格 #1）：待筛 → 已通过 / 已拒绝；已通过 → 已采集；视频：已采集 → 已转写；
-可编译（文章或图文已采集，或视频已转写）→ 已编译；任意状态 → 已失效。
+可编译（文章或图文已采集，或视频已转写）→ 已编译；还没有可编译原始材料的来源 → 已失效
+（已拿到可编译原始材料的来源即使在平台上消失也照常编译，不再变为已失效）。
 """
 
 from itertools import product
@@ -36,9 +37,7 @@ LEGAL = {
         (S.PENDING, S.UNAVAILABLE),
         (S.REJECTED, S.UNAVAILABLE),
         (S.APPROVED, S.UNAVAILABLE),
-        (S.COLLECTED, S.UNAVAILABLE),
-        (S.TRANSCRIBED, S.UNAVAILABLE),
-        (S.COMPILED, S.UNAVAILABLE),
+        (S.COLLECTED, S.UNAVAILABLE),  # 还没转写的视频没有可编译的原始材料
     },
     Kind.ARTICLE: {
         (S.PENDING, S.APPROVED),
@@ -48,8 +47,6 @@ LEGAL = {
         (S.PENDING, S.UNAVAILABLE),
         (S.REJECTED, S.UNAVAILABLE),
         (S.APPROVED, S.UNAVAILABLE),
-        (S.COLLECTED, S.UNAVAILABLE),
-        (S.COMPILED, S.UNAVAILABLE),
     },
 }
 
