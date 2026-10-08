@@ -67,7 +67,7 @@ sub2obsidian login bilibili
 sub2obsidian login douyin
 ```
 
-弹出工具专用的 Chromium 窗口，扫码登录后窗口自动关闭（抖音打开的是首页，在弹出的登录框里扫码）。登录状态保存在用户配置目录的专用浏览器配置里，之后的命令直接复用，不读取你日常使用的 Chrome / Edge。B站 的字幕（CC 与 AI 字幕）需要登录才能拿到；抖音的作品详情接口需要登录 cookie，每次采集时从浏览器配置中读出、拼成 cookie 字符串交给 F2。登录失效时命令会提示「请重新登录 B站：sub2obsidian login bilibili」「请重新登录 抖音：sub2obsidian login douyin」。
+弹出工具专用的 Chromium 窗口，扫码登录后窗口自动关闭（抖音打开的是首页，在弹出的登录框里扫码）。登录状态保存在用户配置目录的专用浏览器配置里，之后的命令直接复用，不读取你日常使用的 Chrome / Edge。B站 的字幕（CC 与 AI 字幕）需要登录才能拿到；抖音的作品详情接口需要登录 cookie，从浏览器配置中读出、拼成 cookie 字符串交给 F2。每次运行中每个平台只读一次浏览器配置（只启动一次无界面浏览器），读出的 cookie 只缓存在内存里。登录失效时命令会提示「请重新登录 B站：sub2obsidian login bilibili」「请重新登录 抖音：sub2obsidian login douyin」。
 
 ## 采集一条来源（推送）
 
@@ -234,7 +234,7 @@ sub2obsidian upgrade-schema                  # 或 --vault <知识库路径>
 | 位置 | 内容 |
 | --- | --- |
 | `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表；`[backfill]` 表的 `batch_size`、`interval` 与 `douyin_interval`：回填的批量大小与 B站、抖音的请求间隔 |
-| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`、`douyin.cookies.txt`（登录时导出；B站 每次使用时从浏览器配置重新导出，抖音每次使用时从浏览器配置读出 cookie 字符串）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
+| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`、`douyin.cookies.txt`（登录时导出；B站 每次运行时从浏览器配置重新导出一次，抖音每次运行时从浏览器配置读出一次 cookie 字符串，同一次运行内复用）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
 | `browser/<平台>/` | 登录用的 Playwright 持久化浏览器配置 |
 | `state/` | 运行状态：`inbox.toml`（收件箱读到的位置、待重试的链接）、`backfill.toml`（每个收藏夹回填到哪一页、哪些平台已回填完成）、`feishu.toml`（与机器人私聊的会话 ID）等 |
 

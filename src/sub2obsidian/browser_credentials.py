@@ -1,7 +1,7 @@
 r"""凭据提供者的实现：Playwright 持久化浏览器配置。
 
 - 浏览器配置放在用户配置目录 browser\<平台>\，登录一次后可复用；
-- 每次需要时从该配置中读出 cookie，导出为 credentials\<平台>.cookies.txt（Netscape 格式，供 yt-dlp），
+- 每次运行中每个平台只从该配置读一次 cookie（启动一次无界面浏览器，结果缓存在内存里），导出为 credentials\<平台>.cookies.txt（Netscape 格式，供 yt-dlp），
   或拼成 cookie 字符串（供 F2）；
 - 不读取用户日常使用的 Chrome / Edge（应用绑定加密导致读取不可靠）。
 """
@@ -148,6 +148,8 @@ class BrowserCredentials:
     def __init__(self, user_config: UserConfig, browser: Browser | None = None) -> None:
         self.user_config = user_config
         self.browser = browser or PlaywrightBrowser()
+        # 本次运行内已读出的有效 cookie，按平台缓存；只在内存里，读一次就要启动一次浏览器
+        self._sessions: dict[str, list[Cookie]] = {}
 
     def _profile(self, platform: str) -> Path:
         return self.user_config.browser_profile_dir(platform).resolve()
@@ -163,6 +165,7 @@ class BrowserCredentials:
 
     def login(self, platform: str) -> None:
         site = SITES[platform]
+        self._sessions.pop(platform, None)  # 重新登录后以浏览器配置中的新 cookie 为准
         cookies = self.browser.login(
             self._profile(platform), site.url, lambda cookies: self._logged_in(site, cookies)
         )
@@ -182,7 +185,12 @@ class BrowserCredentials:
         )
 
     def _session(self, platform: str) -> list[Cookie]:
-        """浏览器配置中当前的 cookie；没有登录或登录已失效时抛 LoginRequired。"""
+        """浏览器配置中当前的 cookie，本次运行内每个平台只读一次；没有登录或登录已失效时抛 LoginRequired。"""
+        if platform not in self._sessions:
+            self._sessions[platform] = self._read_session(platform)
+        return self._sessions[platform]
+
+    def _read_session(self, platform: str) -> list[Cookie]:
         profile = self._profile(platform)
         if not profile.is_dir():
             raise LoginRequired(platform)

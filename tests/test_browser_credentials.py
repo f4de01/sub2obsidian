@@ -50,6 +50,7 @@ class FakeBrowser:
     stored: dict[Path, list[dict]] = field(default_factory=dict)
     on_login: list[dict] = field(default_factory=lambda: list(LOGGED_IN))
     logins: list[tuple[Path, str]] = field(default_factory=list)
+    reads: list[Path] = field(default_factory=list)  # 每次读取都会启动一次无界面浏览器
 
     def login(self, profile: Path, url: str, logged_in) -> list[dict]:
         self.logins.append((profile, url))
@@ -59,6 +60,7 @@ class FakeBrowser:
         return self.on_login
 
     def cookies(self, profile: Path) -> list[dict]:
+        self.reads.append(profile)
         return self.stored.get(profile, [])
 
 
@@ -100,17 +102,61 @@ def test_cookies_file_exports_netscape_cookies_for_ytdlp(user_config):
     assert cookies["buvid3"].expires is None  # 会话 cookie
 
 
-def test_cookies_are_reexported_from_the_profile_each_time(user_config):
-    """B站 会轮换 cookie：以浏览器配置为准，而不是登录时导出的旧文件。"""
+def test_cookies_are_read_from_the_profile_only_once_per_run(user_config):
+    """一次 sync 会多次取 cookie：每个平台只启动一次浏览器。"""
     browser = FakeBrowser()
     credentials = BrowserCredentials(user_config, browser)
     credentials.login("bilibili")
+
+    first = credentials.cookies_file("bilibili")
+    second = credentials.cookies_file("bilibili")
+    credentials.cookie_string("bilibili")
+
+    assert browser.reads == [user_config.browser_profile_dir("bilibili")]
+    assert first == second
+    assert {cookie.name for cookie in load_jar(second)} == {"SESSDATA", "bili_jct", "DedeUserID", "buvid3"}
+
+
+def test_each_run_rereads_cookies_from_the_profile(user_config):
+    """B站 会轮换 cookie：每次运行以浏览器配置为准，而不是上一次运行导出的旧文件。"""
+    browser = FakeBrowser()
+    BrowserCredentials(user_config, browser).login("bilibili")
+    BrowserCredentials(user_config, browser).cookies_file("bilibili")
     profile = user_config.browser_profile_dir("bilibili")
     browser.stored[profile] = [playwright_cookie("SESSDATA", "rotated")]
 
-    path = credentials.cookies_file("bilibili")
+    path = BrowserCredentials(user_config, browser).cookies_file("bilibili")
 
     assert {cookie.name: cookie.value for cookie in load_jar(path)} == {"SESSDATA": "rotated"}
+
+
+def test_logging_in_again_replaces_the_cookies_cached_in_this_run(user_config):
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+    credentials.cookie_string("bilibili")
+    browser.on_login = [playwright_cookie("SESSDATA", "fresh")]
+
+    credentials.login("bilibili")
+
+    assert credentials.cookie_string("bilibili") == "SESSDATA=fresh"
+
+
+def test_each_platform_caches_its_own_cookies(user_config):
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+    browser.on_login = DOUYIN_LOGGED_IN
+    credentials.login("douyin")
+
+    for _ in range(2):
+        assert credentials.cookie_string("bilibili").startswith("SESSDATA=abc")
+        assert "sessionid=0123abcd" in credentials.cookie_string("douyin")
+
+    assert browser.reads == [
+        user_config.browser_profile_dir("bilibili"),
+        user_config.browser_profile_dir("douyin"),
+    ]
 
 
 def test_never_logged_in_asks_to_log_in(user_config):
@@ -201,14 +247,14 @@ def test_cookie_string_exports_douyin_cookies_for_f2(user_config):
     }
 
 
-def test_douyin_cookie_string_is_reread_from_the_profile_each_time(user_config):
+def test_douyin_cookie_string_is_reread_from_the_profile_each_run(user_config):
     browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
-    credentials = BrowserCredentials(user_config, browser)
-    credentials.login("douyin")
+    BrowserCredentials(user_config, browser).login("douyin")
+    BrowserCredentials(user_config, browser).cookie_string("douyin")
     profile = user_config.browser_profile_dir("douyin")
     browser.stored[profile] = [playwright_cookie("sessionid", "rotated", domain=".douyin.com")]
 
-    assert credentials.cookie_string("douyin") == "sessionid=rotated"
+    assert BrowserCredentials(user_config, browser).cookie_string("douyin") == "sessionid=rotated"
 
 
 @pytest.mark.parametrize(
