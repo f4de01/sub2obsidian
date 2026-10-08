@@ -565,8 +565,8 @@ B站 多P视频按视频分组：先是一行视频信息（不是来源，没�
 
 本 Schema 归知识库所有，会按采纳的体检建议和用户的要求演进，这些改动是知识库的**定制**；sub2obsidian 的 Schema 模板也会出新版本。工具从不覆盖本文件：`sub2obsidian upgrade-schema` 发现本文件开头说明中的版本号比模板旧时，在知识库根目录写出 `$pending_schema`——新版模板渲染出的完整 Schema（**待合并版本**），并单独提交。用户说「合并 Schema」（或「升级 Schema」）时，把待合并版本合并进 `CLAUDE.md` 与 `AGENTS.md`：保留定制，并入新模板的变化。按顺序执行：
 
-1. **准备**：知识库根目录没有 `$pending_schema` 时，请用户先执行 `sub2obsidian upgrade-schema --vault .`，然后结束。读两份文件开头说明中的版本号：待合并版本的是**新版本**，`CLAUDE.md` 的是**当前版本**（开头说明被删改、找不到版本号的按旧版处理）。新版本不高于当前版本时不合并：告诉用户待合并文件已过时，可以删除，然后结束。执行 `git status --short`：`CLAUDE.md` 或 `AGENTS.md` 有未提交的改动时，它们也算定制，照常保留、随本次合并一起提交。两份内容不一致时（`git diff --no-index -- CLAUDE.md AGENTS.md` 有输出），把差异告诉用户，按用户选定的那份作为当前 Schema。
-2. **取模板原文**：当前 Schema 所基于的那一版模板，从 git 历史中取，存到系统临时目录（不要写进知识库）：
+1. **准备**：知识库根目录没有 `$pending_schema` 时，请用户先执行 `sub2obsidian upgrade-schema --vault .`，然后结束。读开头说明中的版本号：待合并版本的是**新版本**；`CLAUDE.md` 与 `AGENTS.md` 中较旧的一份是**当前版本**（开头说明被删改、找不到版本号的按旧版处理），与 `upgrade-schema` 的判断一致。新版本不高于当前版本时不合并：告诉用户待合并文件已过时，可以删除，然后结束。执行 `git status --short`：`CLAUDE.md` 或 `AGENTS.md` 有未提交的改动时，它们也算定制，照常保留、随本次合并一起提交。两份内容不一致时（`git diff --no-index -- CLAUDE.md AGENTS.md` 有输出），把差异告诉用户，按用户选定的那份作为当前 Schema。
+2. **取模板原文**：当前 Schema 所基于的那一版模板，从 git 历史中取，存到系统临时目录（不要写进知识库）。本流程的命令在 Git Bash 中执行：Windows PowerShell 的 `>` 会把 `git show` 的输出存成 UTF-16，之后的 `git diff` 会把它当成二进制文件。
    - 合并过 Schema 的：最近一次合并的提交（`git log -1 --format=%h --grep="^Schema: 合并模板版本"`）删掉的待合并文件，即 `git show <提交>^:"$pending_schema"`；
    - 从未合并过的：初始化时写入的 `CLAUDE.md`，即 `git show <提交>:CLAUDE.md`，提交取 `git log --diff-filter=A --format=%h -- CLAUDE.md` 的最后一行（最早的一次）。
 3. **列出定制与新模板的变化**：`git diff --no-index -- <模板原文> CLAUDE.md` 逐处列出**定制**；`git diff --no-index -- <模板原文> "$pending_schema"` 逐处列出**新模板的变化**。`log.md` 中的「Schema」记录（`grep -n "^## \[.*\] Schema" log.md`）说明了哪些定制是采纳的体检建议、为什么改。取不到模板原文时，逐节对比 `CLAUDE.md` 与待合并版本，拿不准某处是定制还是旧模板的写法时，问用户。

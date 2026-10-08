@@ -32,6 +32,7 @@ from sub2obsidian.vault import (
     SCHEMA_VERSION,
     SCREENING_LIST,
     NoSchema,
+    SchemaState,
     init_vault,
     upgrade_schema,
 )
@@ -309,14 +310,14 @@ def upgrade_schema_command(vault_path: Path | None) -> None:
         raise click.ClickException(f"{error}，请先执行 sub2obsidian init 补齐") from error
     except GitError as error:
         raise click.ClickException(str(error)) from error
-    if not upgrade.pending:
-        if upgrade.current == SCHEMA_VERSION:
-            click.echo(f"知识库的 Schema 已是版本 {upgrade.current}，无需升级")
-        else:
-            click.echo(
-                f"知识库的 Schema 是版本 {upgrade.current}，比本工具的模板（版本 {SCHEMA_VERSION}）新；"
-                "没有写出任何文件。请先升级 sub2obsidian"
-            )
+    if upgrade.state is SchemaState.UP_TO_DATE:
+        click.echo(f"知识库的 Schema 已是版本 {upgrade.current}，无需升级")
+        return
+    if upgrade.state is SchemaState.NEWER:
+        click.echo(
+            f"知识库的 Schema 是版本 {upgrade.current}，比本工具的模板（版本 {SCHEMA_VERSION}）新；"
+            "没有写出任何文件。请先升级 sub2obsidian"
+        )
         return
     current = (
         "没有可识别的版本号（开头说明中的「Schema 模板（版本 N）」），按旧版处理"
@@ -326,8 +327,9 @@ def upgrade_schema_command(vault_path: Path | None) -> None:
     click.echo(
         f"知识库的 Schema {current}，模板已是版本 {SCHEMA_VERSION}：\n"
         f"已写出待合并版本 {PENDING_SCHEMA} 并提交，CLAUDE.md 与 AGENTS.md 未改动。\n"
-        "在知识库目录中对 agent 说「合并 Schema」，"
-        "它会保留知识库的定制、并入新模板的变化，更新版本号后删除待合并文件并提交。"
+        f"在知识库目录中对 agent 说「按 {PENDING_SCHEMA} 中的「合并 Schema 流程」合并 Schema」"
+        "（旧版 Schema 里还没有这个流程）：它会保留知识库的定制、并入新模板的变化，"
+        "更新版本号后删除待合并文件并提交。"
     )
 
 

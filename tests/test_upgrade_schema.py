@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from test_init import chapter
-from vault_git import commit_subjects, git
+from vault_git import commit, commit_subjects, git
 
 PENDING = "Schema 待合并.md"
 
@@ -38,8 +38,7 @@ def make_old_schema(vault: Path, schema: str = OLD_SCHEMA) -> None:
     """把知识库的 Schema 换成一份带定制的旧版，并提交（像是很早以前初始化、后来改过的知识库）。"""
     for name in ["CLAUDE.md", "AGENTS.md"]:
         (vault / name).write_text(schema, encoding="utf-8")
-    git(vault, "add", "--", "CLAUDE.md", "AGENTS.md")
-    git(vault, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "旧版 Schema")
+    commit(vault, "旧版 Schema", "CLAUDE.md", "AGENTS.md")
 
 
 def current_template(tmp_path: Path, run) -> str:
@@ -58,7 +57,8 @@ def test_older_schema_gets_a_pending_version_and_stays_untouched(run, vault: Pat
     assert result.exit_code == 0, result.output
     assert "版本 1" in result.output
     assert PENDING in result.output
-    assert "合并 Schema" in result.output
+    # 旧版 Schema 里还没有合并流程，提示让 agent 照待合并版本中的流程做
+    assert f"按 {PENDING} 中的「合并 Schema 流程」合并 Schema" in result.output
     assert (vault / PENDING).read_text(encoding="utf-8") == current_template(tmp_path, run)
     for name in ["CLAUDE.md", "AGENTS.md"]:
         assert (vault / name).read_text(encoding="utf-8") == OLD_SCHEMA
@@ -114,8 +114,7 @@ def test_the_older_of_claude_md_and_agents_md_decides(run, vault: Path):
     """两份 Schema 本应相同；只改了一份时，按较旧的一份判断，免得漏掉升级。"""
     run.run("init", str(vault))
     (vault / "CLAUDE.md").write_text(OLD_SCHEMA, encoding="utf-8")
-    git(vault, "add", "--", "CLAUDE.md")
-    git(vault, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "只改了 CLAUDE.md")
+    commit(vault, "只改了 CLAUDE.md", "CLAUDE.md")
 
     result = run.run("upgrade-schema", "--vault", str(vault))
 

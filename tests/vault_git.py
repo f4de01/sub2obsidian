@@ -22,3 +22,9 @@ def commit_subjects(vault: Path) -> list[str]:
 
 def is_ignored(vault: Path, relative: str) -> bool:
     return git(vault, "check-ignore", relative).strip() == relative
+
+
+def commit(vault: Path, message: str, *paths: str) -> None:
+    """以测试身份提交给定路径，模拟用户在知识库中的提交。"""
+    git(vault, "add", "--", *paths)
+    git(vault, "-c", "user.name=测试", "-c", "user.email=test@localhost", "commit", "--quiet", "-m", message)

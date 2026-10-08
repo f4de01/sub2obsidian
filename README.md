@@ -225,9 +225,7 @@ sub2obsidian upgrade-schema                  # 或 --vault <知识库路径>
 ```
 
 1. `upgrade-schema` 读 `CLAUDE.md` / `AGENTS.md` 开头说明中的版本号（「Schema 模板（版本 N）」，两份不一致时按较旧的一份；找不到版本号的按旧版处理）。比模板旧时，把当前模板渲染为待合并版本 `Schema 待合并.md` 写进知识库并单独提交，**不改动**现有的 `CLAUDE.md` 与 `AGENTS.md`；已是最新时提示无需升级，不写任何文件。可以重复执行，结果相同。
-2. 在知识库目录的 agent 会话里说「合并 Schema」。agent 按 Schema 中的「合并 Schema 流程」：从知识库的 git 历史中取出当前 Schema 所基于的模板原文，分出知识库的定制（如采纳的体检建议）与新模板的变化，保留定制、并入变化、更新版本号，删除 `Schema 待合并.md`，以一次 git 提交（`Schema: 合并模板版本 N`）结束；定制与新模板冲突、无法兼顾的地方列出来请你决定。
-
-版本 5 之前的 Schema 里还没有「合并 Schema 流程」：第 2 步对 agent 说「按 `Schema 待合并.md` 中的『合并 Schema 流程』合并 Schema」即可。
+2. 在知识库目录的 agent 会话里，照 `upgrade-schema` 的提示说「按 `Schema 待合并.md` 中的『合并 Schema 流程』合并 Schema」（版本 5 之前的 Schema 里还没有这个流程；版本 5 起说「合并 Schema」即可）。agent 按「合并 Schema 流程」：从知识库的 git 历史中取出当前 Schema 所基于的模板原文，分出知识库的定制（如采纳的体检建议）与新模板的变化，保留定制、并入变化、更新版本号，删除 `Schema 待合并.md`，以一次 git 提交（`Schema: 合并模板版本 N`）结束；定制与新模板冲突、无法兼顾的地方列出来请你决定。
 
 ## 用户配置目录
 

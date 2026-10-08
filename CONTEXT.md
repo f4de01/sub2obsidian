@@ -103,5 +103,8 @@ _Avoid_: 导入, 总结
 把新版 Schema 模板并入知识库的 Schema：CLI 只写出待合并版本，由 agent 保留知识库的定制、并入模板的变化。
 _Avoid_: 覆盖 Schema, 重新初始化
 
+**待合并版本 (Pending Schema)**:
+升级 Schema 时由 CLI 写进知识库的新版模板渲染结果；用户说「合并 Schema」后由 agent 合并进 Schema 并删除。
+
 **体检 (Lint)**:
 检查 Wiki 的矛盾、孤立页、重复概念并修复；每次编译后对涉及页面做轻量体检，全库体检由用户发起。

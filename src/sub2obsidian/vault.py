@@ -6,6 +6,7 @@ import datetime as dt
 import json
 import re
 from dataclasses import dataclass
+from enum import Enum
 from importlib.resources import files
 from pathlib import Path
 from string import Template
@@ -23,6 +24,8 @@ NOTES_DIR = "我的笔记"
 ATTACHMENTS_DIR = "附件"
 STATUS_PAGE = "来源状态.md"
 SCREENING_LIST = "待筛清单.md"  # 由 sync 生成，screen 读取
+SCHEMA_FILES = ["CLAUDE.md", "AGENTS.md"]  # 内容相同的两份 Schema
+PENDING_SCHEMA = "Schema 待合并.md"  # upgrade-schema 写出，agent 合并后删除
 
 DIRECTORIES = [
     RAW_DIR,
@@ -106,8 +109,7 @@ def _skeleton_files(today: dt.date) -> dict[str, bytes]:
     return {
         "index.md": _text(_index()),
         "log.md": _text(_log(today)),
-        "CLAUDE.md": schema,
-        "AGENTS.md": schema,
+        **{name: schema for name in SCHEMA_FILES},
         STATUS_PAGE: _text(_render("status_page.md")),
         ".gitignore": _text(GITIGNORE),
         **_obsidian_config(),
@@ -142,16 +144,20 @@ def init_vault(root: Path) -> InitResult:
     return InitResult(new_vault=new_vault, created=created_dirs + created_files)
 
 
-SCHEMA_FILES = ["CLAUDE.md", "AGENTS.md"]
-PENDING_SCHEMA = "Schema 待合并.md"  # upgrade-schema 写出、agent 合并后删除
 # Schema 开头说明中的版本标记，如「Schema 模板（版本 5）」；容忍半角括号与多余空格
 _VERSION_MARK = re.compile(r"Schema\s*模板\s*[（(]\s*版本\s*(\d+)\s*[）)]")
 
 
+class SchemaState(Enum):
+    UP_TO_DATE = "已是最新"
+    NEWER = "比模板新"  # 工具比知识库旧
+    PENDING = "已写出待合并版本"
+
+
 @dataclass(frozen=True)
 class SchemaUpgrade:
+    state: SchemaState
     current: int | None  # 知识库 Schema 的版本；没有可识别的版本标记时为 None
-    pending: bool  # 是否写出了待合并版本
 
 
 class NoSchema(RuntimeError):
@@ -181,10 +187,12 @@ def upgrade_schema(root: Path) -> SchemaUpgrade:
     已是最新（或比模板还新）时不写任何文件。合并由 agent 按 Schema 中的「合并 Schema 流程」完成。
     """
     current = _schema_version(root)
-    if current is not None and current >= SCHEMA_VERSION:
-        return SchemaUpgrade(current=current, pending=False)
+    if current == SCHEMA_VERSION:
+        return SchemaUpgrade(SchemaState.UP_TO_DATE, current)
+    if current is not None and current > SCHEMA_VERSION:
+        return SchemaUpgrade(SchemaState.NEWER, current)
     (root / PENDING_SCHEMA).write_bytes(_text(_render("schema_template.md")))
     git.commit_paths(
         root, [PENDING_SCHEMA], f"upgrade-schema: 写出待合并的 Schema 版本 {SCHEMA_VERSION}"
     )
-    return SchemaUpgrade(current=current, pending=True)
+    return SchemaUpgrade(SchemaState.PENDING, current)
