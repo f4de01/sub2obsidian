@@ -14,3 +14,5 @@
 
 字幕接口需要登录，录制不了真实样本，所以 `nav_logged_in.json` 与 `ytdlp_info_logged_in.json` 先用构造样本。
 #12 人工验收时登录后运行 `uv run python scripts/record_bilibili_fixtures.py <带字幕的BV号>` 覆盖这两份，契约测试应仍然通过。
+
+另有 `nav_rate_limited.json`（构造）：风控拦截时接口返回 `-412 请求被拦截`，属于可重试的失败，不是登录失效。

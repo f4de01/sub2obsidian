@@ -28,6 +28,7 @@ BEIJING = dt.timezone(dt.timedelta(hours=8))
 # view 接口中表示稿件已删除或不可见的错误码 → 来源已失效。
 # 其他错误码（如 62004 审核中、-412 风控）视为可重试的失败。
 UNAVAILABLE_CODES = {-404, 62002, 62012}
+NOT_LOGGED_IN = -101  # nav 接口：账号未登录
 
 
 class BilibiliClient(Protocol):
@@ -74,8 +75,11 @@ class BilibiliAdapter:
         if self._login_verified:
             return
         nav = self.client.api("/x/web-interface/nav", {}, cookies)
-        if not (nav.get("data") or {}).get("isLogin"):
+        code = nav.get("code")
+        if code == NOT_LOGGED_IN or (code == 0 and not (nav.get("data") or {}).get("isLogin")):
             raise LoginRequired(PLATFORM)
+        if code != 0:  # 如 -412 风控拦截：可重试，不是登录问题
+            raise FetchFailed(f"{nav.get('message') or 'B站 接口出错'}（{code}）")
         self._login_verified = True
 
     def _raise_if_unavailable(self, ref: SourceRef) -> None:

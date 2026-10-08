@@ -201,3 +201,10 @@ def test_logged_in_sample_yields_a_platform_subtitle_transcript(cookies):
     starts = [segment.start for segment in fetched.transcript.segments]
     assert starts and starts == sorted(starts)
     assert all(segment.text.strip() for segment in fetched.transcript.segments)
+
+
+def test_rate_limited_login_check_is_retryable_not_a_login_problem(cookies):
+    client = ReplayClient(nav="nav_rate_limited.json")
+
+    with pytest.raises(FetchFailed, match="请求被拦截（-412）"):
+        adapter(cookies, client).fetch(REF)

@@ -54,7 +54,7 @@ def test_capture_subtitled_video_lands_metadata_cover_and_transcript(run, bilibi
     meta = read_metadata(vault, "bilibili", BV)
     assert meta["平台"] == "bilibili"
     assert meta["平台内ID"] == BV
-    assert meta["链接"] == CANONICAL
+    assert meta["规范链接"] == CANONICAL
     assert meta["类型"] == "视频"
     assert meta["标题"] == "【大模型】RAG 到底是什么？10 分钟讲清楚"
     assert meta["作者"] == "某知识区UP主"
@@ -115,7 +115,7 @@ def test_same_video_submitted_in_any_link_form_is_kept_once(
     assert result.exit_code == 0, result.output
     assert source_dirs(vault) == [source_dir(vault, "bilibili", BV)]
     assert bilibili.fetched == [BV]
-    assert read_metadata(vault, "bilibili", BV)["链接"] == CANONICAL
+    assert read_metadata(vault, "bilibili", BV)["规范链接"] == CANONICAL
     assert "已存在" in result.output
 
 
@@ -127,7 +127,7 @@ def test_first_capture_through_short_link_stores_canonical_link(run, bilibili, i
     result = run.run("capture", f"【分享】 {SHORT}")
 
     assert result.exit_code == 0, result.output
-    assert read_metadata(vault, "bilibili", BV)["链接"] == CANONICAL
+    assert read_metadata(vault, "bilibili", BV)["规范链接"] == CANONICAL
 
 
 def test_unavailable_video_becomes_unavailable_stub_and_is_not_retried(run, bilibili, initialized):
@@ -142,7 +142,7 @@ def test_unavailable_video_becomes_unavailable_stub_and_is_not_retried(run, bili
     meta = read_metadata(vault, "bilibili", BV)
     assert meta["来源状态"] == "已失效"
     assert meta["失败原因"] == "稿件不可见（62002）"
-    assert meta["链接"] == CANONICAL
+    assert meta["规范链接"] == CANONICAL
     assert sorted(p.name for p in source_dir(vault, "bilibili", BV).iterdir()) == ["元数据.md"]
     assert bilibili.fetched == [BV]  # 第二次提交不再访问平台
     assert "已存在" in second.output
@@ -303,3 +303,11 @@ def test_capture_commit_names_each_changed_source(run, bilibili, initialized):
     assert message.startswith("capture: 采集 2 个来源")
     assert f"- B站 {BV} 【大模型】RAG 到底是什么？10 分钟讲清楚" in message
     assert f"- B站 {other}\n" in message
+
+
+def test_same_failing_link_twice_in_one_text_is_committed_once(run, vault: Path):
+    run.run("init", str(vault))  # 未登录：两次采集都失败
+
+    run.run("capture", f"{CANONICAL} {CANONICAL}")
+
+    assert git(vault, "log", "-1", "--format=%B").startswith(f"capture: B站 {BV}\n")

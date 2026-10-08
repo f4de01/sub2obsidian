@@ -43,6 +43,12 @@ def extract_urls(text: str) -> list[str]:
     return [match.rstrip(".,;:!?)]") for match in _URL.findall(text)]
 
 
+def _bilibili_ref(bv_suffix: str) -> SourceRef:
+    """BV 号统一为大写 BV 前缀；规范链接不带任何查询参数与锚点。"""
+    bvid = "BV" + bv_suffix
+    return SourceRef("bilibili", bvid, f"https://www.bilibili.com/video/{bvid}")
+
+
 def _bilibili_video(url: str) -> SourceRef | None:
     parts = urlsplit(url)
     if (parts.hostname or "").lower() not in _BILIBILI_HOSTS:
@@ -50,15 +56,13 @@ def _bilibili_video(url: str) -> SourceRef | None:
     match = re.fullmatch(r"/video/" + _BV.pattern + r"/?", parts.path)
     if not match:
         raise UnsupportedLink(f"不是 B站 视频链接：{url}")
-    bvid = "BV" + match.group(1)
-    return SourceRef("bilibili", bvid, f"https://www.bilibili.com/video/{bvid}")
+    return _bilibili_ref(match.group(1))
 
 
 def _bilibili_short(url: str, expand: Expander) -> SourceRef:
     path = urlsplit(url).path
     if match := re.fullmatch(r"/" + _BV.pattern + r"/?", path):
-        bvid = "BV" + match.group(1)
-        return SourceRef("bilibili", bvid, f"https://www.bilibili.com/video/{bvid}")
+        return _bilibili_ref(match.group(1))
     target = expand("bilibili", url)
     ref = _bilibili_video(target)
     if ref is None:

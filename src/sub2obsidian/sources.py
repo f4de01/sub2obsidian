@@ -78,7 +78,7 @@ def transition_allowed(kind: Kind, old: Status, new: Status) -> bool:
 FIELDS = [
     "平台",
     "平台内ID",
-    "链接",
+    "规范链接",
     "类型",
     "标题",
     "作者",
@@ -100,7 +100,7 @@ class Source:
 
     @property
     def ref(self) -> SourceRef:
-        return SourceRef(self.meta["平台"], self.meta["平台内ID"], self.meta["链接"])
+        return SourceRef(self.meta["平台"], self.meta["平台内ID"], self.meta["规范链接"])
 
     @property
     def status(self) -> Status:
@@ -154,7 +154,7 @@ class SourceRepository:
             {
                 "平台": ref.platform,
                 "平台内ID": ref.platform_id,
-                "链接": ref.url,
+                "规范链接": ref.url,
                 "类型": str(kind),
                 "采集途径": str(origin),
                 "采集时间": _now(),

@@ -142,9 +142,6 @@ class BrowserCredentials:
         self.user_config = user_config
         self.browser = browser or PlaywrightBrowser()
 
-    def _site(self, platform: str) -> LoginSite:
-        return SITES[platform]
-
     def _profile(self, platform: str) -> Path:
         return self.user_config.browser_profile_dir(platform).resolve()
 
@@ -158,7 +155,7 @@ class BrowserCredentials:
         )
 
     def login(self, platform: str) -> None:
-        site = self._site(platform)
+        site = SITES[platform]
         cookies = self.browser.login(
             self._profile(platform), site.url, lambda cookies: self._logged_in(site, cookies)
         )
@@ -167,7 +164,7 @@ class BrowserCredentials:
         self._export(platform, site, cookies)
 
     def cookies_file(self, platform: str) -> Path:
-        site = self._site(platform)
+        site = SITES[platform]
         profile = self._profile(platform)
         if not profile.is_dir():
             raise LoginRequired(platform)

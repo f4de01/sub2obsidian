@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sub2obsidian import git, transcript
-from sub2obsidian.links import SourceRef, UnsupportedLink, extract_urls, normalize
 from sub2obsidian.credentials import CredentialError
+from sub2obsidian.links import UnsupportedLink, extract_urls, normalize
 from sub2obsidian.platforms import FetchedSource, FetchFailed, PlatformAdapter, SourceUnavailable
 from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
 
@@ -32,7 +32,9 @@ def capture_text(text: str, vault: Path, adapters: Mapping[str, PlatformAdapter]
 
 def commit_changes(vault: Path, outcomes: list[Outcome]) -> None:
     """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。"""
-    changed = [outcome.changed for outcome in outcomes if outcome.changed is not None]
+    # 同一来源在一段文本里出现多次时只算一次
+    by_directory = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
+    changed = list(by_directory.values())
     if not changed:
         return
     lines = [" ".join(filter(None, [s.ref.display, s.meta["标题"]])) for s in changed]
