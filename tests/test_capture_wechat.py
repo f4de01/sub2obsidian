@@ -30,6 +30,7 @@ def article() -> FetchedSource:
         published="2024-01-31T14:37:04+08:00",
         description="ChatDOC PDF解析器显著提升了RAG系统的回答效果。",
         cover=Asset(name="封面.jpg", data=COVER),
+        byline="创新而务实的",
         article=Article(
             markdown=(
                 "**摘要**\n\n检索增强生成（RAG）可以更好地利用领域专家知识。\n\n"
@@ -37,7 +38,6 @@ def article() -> FetchedSource:
                 "## PDF 解析和分块\n\n![](图02.jpg)\n"
             ),
             images=[Asset(name="图01.png", data=FIGURE_1), Asset(name="图02.jpg", data=FIGURE_2)],
-            byline="创新而务实的",
         ),
     )
 
@@ -62,6 +62,7 @@ def test_capture_article_lands_markdown_body_local_images_and_metadata(run, wech
     assert meta["类型"] == "文章"
     assert meta["标题"] == TITLE
     assert meta["作者"] == "北京庖丁科技"  # 公众号名
+    assert meta["署名"] == "创新而务实的"  # 原文署名作者
     assert meta["发布时间"] == "2024-01-31T14:37:04+08:00"
     assert meta["时长"] is None
     assert meta["采集途径"] == "推送"

@@ -104,6 +104,7 @@ def _store(repo: SourceRepository, source: Source, fetched: FetchedSource) -> No
         kind=Kind(fetched.kind),
         title=fetched.title,
         author=fetched.author,
+        byline=fetched.byline,
         published=fetched.published,
         duration=fetched.duration,
         description=fetched.description,
@@ -120,8 +121,8 @@ def _render_body(source: Source, fetched: FetchedSource, article: Article) -> st
     """正文.md：标题、出处信息行（公众号名、原文署名、发布日期、原文链接），然后是正文。"""
     name = PLATFORM_NAMES.get(source.ref.platform, source.ref.platform)
     credits = [f"{name}：{fetched.author}" if fetched.author else name]
-    if article.byline and article.byline != fetched.author:
-        credits.append(f"作者：{article.byline}")
+    if fetched.byline and fetched.byline != fetched.author:
+        credits.append(f"作者：{fetched.byline}")
     if fetched.published:
         credits.append(f"发布时间：{fetched.published[:10]}")
     credits.append(f"[原文]({source.ref.url})")

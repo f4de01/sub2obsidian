@@ -106,10 +106,11 @@ class WechatAdapter:
             kind="文章",
             title=title,
             author=_text(soup.find(id="js_name")) or _js_var(soup, "nickname"),
+            byline=_meta(soup, "author"),
             published=_published(_js_var(soup, "ct")),
             description=_meta(soup, "description") or "",
             cover=self._cover(_js_var(soup, "msg_cdn_url") or _meta(soup, "og:image")),
-            article=self._article(content, byline=_meta(soup, "author")),
+            article=self._article(content),
         )
 
     def download_audio(self, ref: SourceRef, directory: Path) -> Path:
@@ -142,7 +143,7 @@ class WechatAdapter:
             return None
         return Asset(name=f"封面{_suffix(url)}", data=self.client.download(url))
 
-    def _article(self, content: Tag, byline: str | None) -> Article:
+    def _article(self, content: Tag) -> Article:
         for element in content.find_all(["script", "style"]):
             element.decompose()
         images: list[Asset] = []
@@ -160,7 +161,7 @@ class WechatAdapter:
                     name = url  # 图床上已经没有这张图：保留原地址，不阻塞整篇文章
                 names[url] = name
             img.attrs = {"src": names[url], "alt": img.get("alt", "")}
-        return Article(markdown=_markdown(content), images=images, byline=byline or None)
+        return Article(markdown=_markdown(content), images=images)
 
 
 def _js_var(soup: BeautifulSoup, name: str) -> str | None:

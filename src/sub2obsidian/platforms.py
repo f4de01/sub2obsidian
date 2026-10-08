@@ -39,7 +39,6 @@ class Article:
 
     markdown: str
     images: list[Asset]
-    byline: str | None = None  # 原文署名（公众号文章中公众号名之外的作者）
 
 
 @dataclass(frozen=True)
@@ -49,6 +48,7 @@ class FetchedSource:
     kind: str  # 视频 / 文章 / 图文
     title: str
     author: str | None = None  # UP主、公众号名等发布者
+    byline: str | None = None  # 原文署名作者（公众号文章在公众号名之外的作者）
     published: str | None = None  # ISO 8601，带时区
     duration: int | None = None  # 秒，仅视频
     description: str = ""

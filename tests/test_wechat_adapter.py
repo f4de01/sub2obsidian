@@ -66,8 +66,8 @@ def test_fetch_maps_article_page_to_source_metadata():
     assert fetched.description == "ChatDOC PDF解析器显著提升了RAG系统的回答效果，提高了大模型输出质量。"
     assert fetched.duration is None
     assert fetched.transcript is None
+    assert fetched.byline == "创新而务实的"
     assert fetched.article is not None
-    assert fetched.article.byline == "创新而务实的"
 
 
 def test_cover_is_downloaded_from_the_article_cover_image():

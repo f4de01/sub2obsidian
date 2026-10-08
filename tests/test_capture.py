@@ -58,6 +58,7 @@ def test_capture_subtitled_video_lands_metadata_cover_and_transcript(run, bilibi
     assert meta["类型"] == "视频"
     assert meta["标题"] == "【大模型】RAG 到底是什么？10 分钟讲清楚"
     assert meta["作者"] == "某知识区UP主"
+    assert meta["署名"] is None
     assert meta["发布时间"] == "2024-05-01T20:00:00+08:00"
     assert meta["时长"] == 612
     assert meta["来源状态"] == "已转写"

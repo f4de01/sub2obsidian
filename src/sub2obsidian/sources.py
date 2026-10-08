@@ -82,6 +82,7 @@ FIELDS = [
     "类型",
     "标题",
     "作者",
+    "署名",
     "发布时间",
     "时长",
     "采集途径",
@@ -188,6 +189,7 @@ class SourceRepository:
         kind: Kind,
         title: str,
         author: str | None,
+        byline: str | None,
         published: str | None,
         duration: int | None,
         description: str,
@@ -199,6 +201,7 @@ class SourceRepository:
                 "类型": str(kind),
                 "标题": title,
                 "作者": author,
+                "署名": byline,
                 "发布时间": published,
                 "时长": duration,
             }
