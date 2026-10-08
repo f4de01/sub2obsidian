@@ -172,6 +172,23 @@ sub2obsidian capture "https://www.bilibili.com/video/BV1mubY6jE4u"
 
 欢迎在 [Issues](https://github.com/f4de01/sub2obsidian/issues) 里提需求，或者告诉我你最想接入哪个平台。
 
+## 相关项目与致谢
+
+这个方向已经有不少优秀的项目，按你的需要也许它们更合适：
+
+| 项目 | 适合你，如果你想要…… | 和 sub2obsidian 的区别 |
+|---|---|---|
+| [Karpathy 的 LLM Wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) | 理解这套方法论本身 | 本项目的思想来源 |
+| [llm-wiki-skill](https://github.com/sdyckjq-lab/llm-wiki-skill) | 一个通用的中文 LLM Wiki skill，逐条喂入公众号、知乎、YouTube 链接 | 不批量导入收藏，不支持 B站 / 抖音视频转写 |
+| [claude-obsidian](https://github.com/AgriciDaniel/claude-obsidian)、[llm_wiki](https://github.com/nashsu/llm_wiki) | 用 Claude Code 或桌面应用把文档编译成 Wiki | 面向通用文档，没有视频平台采集 |
+| [BiliNote](https://github.com/JefferyHcool/BiliNote) | 给单个视频生成带跳转时间戳和截图的笔记 | 一条视频一篇笔记，不汇总成概念页 |
+| [bilibili-rag](https://github.com/via007/bilibili-rag) | 对 B站 收藏夹做向量检索、聊天问答 | 走 RAG 检索问答，不生成可阅读的 Wiki |
+| [douyin-favorites-to-knowledge](https://github.com/tars1230/douyin-favorites-to-knowledge) | 把抖音收藏批量转成 Markdown 笔记和每日摘要 | 只支持抖音，一条视频一篇笔记 |
+
+sub2obsidian 想补上的是：**三个平台的收藏一起批量导入**，并且编译成**每条论断都能追溯到原视频秒数的概念 Wiki**。
+
+站在这些开源项目的肩膀上：[yt-dlp](https://github.com/yt-dlp/yt-dlp)、[F2](https://github.com/Johnserf-Seed/f2)、[faster-whisper](https://github.com/SYSTRAN/faster-whisper)、[Playwright](https://playwright.dev/python/)、[Dataview](https://github.com/blacksmithgu/obsidian-dataview)、[飞书开放平台 SDK](https://github.com/larksuite/oapi-sdk-python)。
+
 ## 参与开发
 
 ```powershell
