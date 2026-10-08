@@ -56,7 +56,7 @@ sub2obsidian init "E:\笔记\知识库"  # 指定路径
 - 写入 Dataview 状态页 `来源状态.md`：各来源状态的数量，以及待编译、待转写、待筛、采集失败、已失效的来源清单；
 - 预置 `.obsidian`：附件目录为 `附件/`、使用 wikilink，Dataview 插件已安装并启用；
 - 把知识库设为 git 仓库（`.gitignore` 排除 Obsidian 工作区状态），首次初始化提交一次；
-- 通过 `obsidian://open?path=…` 让 Obsidian 登记并打开该知识库。
+- 在 Obsidian 中打开该知识库：先只读检查 `%APPDATA%\obsidian\obsidian.json`，知识库已在 Obsidian 登记过时，通过 `obsidian://open?path=…` 直接打开；尚未登记（或该文件不存在、无法解析）时不触发 URI——这个 URI 只能打开已登记的目录，不会登记新目录——而是在终端打印一次性的手动步骤：Obsidian 左下角仓库名 →「管理仓库…」→「打开本地仓库」→ 选择该路径 → 信任插件。手动打开一次之后，再执行 `init` 就会直接打开。本工具从不改写 `obsidian.json`。
 
 可以放心重复执行：只补缺失的目录与文件，从不覆盖已有文件；补回的文件单独提交，不会卷入你未提交的改动。
 

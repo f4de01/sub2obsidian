@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
+import pytest
+
 from vault_git import commit_subjects, git, is_ignored
 
 
@@ -127,7 +129,75 @@ def test_rerun_init_on_complete_vault_makes_no_new_commit(run, vault: Path):
     assert len(commit_subjects(vault)) == 1
 
 
-def test_init_opens_vault_in_obsidian_via_uri(run, launcher, vault: Path):
+# Obsidian 界面上的说法，手动步骤必须用到
+MANUAL_STEPS = ["管理仓库", "打开本地仓库", "信任"]
+
+
+@pytest.fixture
+def obsidian_json(user_config_dir: Path) -> Path:
+    r"""Obsidian 的登记文件 %APPDATA%\obsidian\obsidian.json（%APPDATA% 已指向临时目录）。"""
+    return user_config_dir.parent / "obsidian" / "obsidian.json"
+
+
+def write_bytes(file: Path, content: bytes) -> None:
+    file.parent.mkdir(parents=True, exist_ok=True)
+    file.write_bytes(content)
+
+
+def register_in_obsidian(obsidian_json: Path, *paths: str) -> None:
+    """按真实 obsidian.json 的形状登记目录。"""
+    vaults = {f"{index:016x}": {"path": path, "ts": 1700000000000} for index, path in enumerate(paths)}
+    write_bytes(obsidian_json, json.dumps({"vaults": vaults}, ensure_ascii=False).encode("utf-8"))
+
+
+@pytest.mark.parametrize(
+    "prepare",
+    [
+        pytest.param(lambda obsidian_json, vault: None, id="obsidian.json 不存在"),
+        pytest.param(
+            lambda obsidian_json, vault: register_in_obsidian(
+                obsidian_json, str(vault.parent), str(vault.parent / "别的库")
+            ),
+            id="只登记了别的目录",
+        ),
+        pytest.param(lambda obsidian_json, vault: write_bytes(obsidian_json, b'{"vaults": {'), id="JSON 损坏"),
+        pytest.param(
+            lambda obsidian_json, vault: write_bytes(obsidian_json, "知识库".encode("gbk")),
+            id="不是 UTF-8",
+        ),
+        pytest.param(lambda obsidian_json, vault: write_bytes(obsidian_json, b'{"vaults": []}'), id="形状不对"),
+    ],
+)
+def test_init_on_vault_not_registered_in_obsidian_prints_manual_steps_instead_of_opening(
+    run, launcher, vault: Path, obsidian_json: Path, prepare
+):
+    prepare(obsidian_json, vault.resolve())
+
+    result = run.run("init", str(vault))
+
+    assert result.exit_code == 0, result.output
+    assert launcher.opened == []
+    for step in MANUAL_STEPS:
+        assert step in result.output, step
+    assert str(vault.resolve()) in result.output
+
+
+def test_init_matches_obsidian_registration_ignoring_case_and_trailing_separator(
+    run, launcher, vault: Path, obsidian_json: Path
+):
+    register_in_obsidian(obsidian_json, str(vault.resolve()).upper() + "\\")
+
+    result = run.run("init", str(vault))
+
+    assert result.exit_code == 0, result.output
+    assert len(launcher.opened) == 1
+
+
+def test_init_opens_vault_registered_in_obsidian_via_uri(
+    run, launcher, vault: Path, obsidian_json: Path
+):
+    register_in_obsidian(obsidian_json, str(vault.resolve()))
+
     run.run("init", str(vault))
 
     assert len(launcher.opened) == 1

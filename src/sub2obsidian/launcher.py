@@ -1,4 +1,4 @@
-"""启动器：把 URI 交给操作系统打开（如让 Obsidian 登记并打开知识库）。"""
+"""启动器：把 URI 交给操作系统打开（如让 Obsidian 打开已登记的知识库）。"""
 
 from __future__ import annotations
 
@@ -24,5 +24,5 @@ class SystemLauncher:
 
 
 def obsidian_open_uri(vault: Path) -> str:
-    """`obsidian://open?path=…`：Obsidian 据此登记并打开该目录，无需改 obsidian.json。"""
+    """`obsidian://open?path=…`：只能打开已在 Obsidian 登记的目录，不会登记新目录。"""
     return "obsidian://open?path=" + quote(str(vault), safe="")

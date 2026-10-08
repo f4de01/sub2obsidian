@@ -25,6 +25,12 @@ APP_NAME = "sub2obsidian"
 DEFAULT_VAULT = Path("D:/Obsidian/知识库")
 
 
+def appdata_dir() -> Path:
+    r"""%APPDATA%（缺省为 ~\AppData\Roaming）：本工具与 Obsidian 的用户配置目录都在其下。"""
+    appdata = os.environ.get("APPDATA")
+    return Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
+
+
 class ConfigError(ValueError):
     """config.toml 中的设置无效；消息指出哪一项、应该怎么写。"""
 
@@ -71,9 +77,7 @@ class UserConfig:
 
     @classmethod
     def default(cls) -> UserConfig:
-        appdata = os.environ.get("APPDATA")
-        base = Path(appdata) if appdata else Path.home() / "AppData" / "Roaming"
-        return cls(base / APP_NAME)
+        return cls(appdata_dir() / APP_NAME)
 
     @property
     def config_file(self) -> Path:

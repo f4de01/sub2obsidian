@@ -18,6 +18,7 @@ from sub2obsidian.git import GitError
 from sub2obsidian.inbox import Inbox
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
+from sub2obsidian.obsidian_registry import registered_in_obsidian
 from sub2obsidian.platforms import PlatformAdapter
 from sub2obsidian.screening import ScreenRefused, update_list
 from sub2obsidian.screening import screen as screen_sources
@@ -77,8 +78,17 @@ def init(ports: Ports, path: Path | None) -> None:
         click.echo(f"已补齐 {len(result.created)} 项：{'、'.join(result.created)}")
     else:
         click.echo("知识库完整，无需补齐")
-    ports.launcher.open(obsidian_open_uri(vault))
-    click.echo("已请求 Obsidian 打开该知识库")
+    if registered_in_obsidian(vault):
+        ports.launcher.open(obsidian_open_uri(vault))
+        click.echo("已请求 Obsidian 打开该知识库")
+    else:
+        click.echo(
+            "该知识库尚未在 Obsidian 登记，请手动打开一次（之后 Obsidian 会记住它）：\n"
+            "  1. 在 Obsidian 左下角点仓库名，选「管理仓库…」\n"
+            "  2. 点「打开本地仓库」，选择该路径：\n"
+            f"     {vault}\n"
+            "  3. 提示是否信任该知识库的插件时，选择信任（Dataview 才会启用）"
+        )
 
 
 @cli.command()
