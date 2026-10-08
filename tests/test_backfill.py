@@ -42,6 +42,7 @@ def favorite(n: int, **overrides) -> Favorite:
 def initialized(run, vault: Path, credentials) -> Path:
     run.run("init", str(vault))
     credentials.login("bilibili")
+    credentials.login("douyin")  # 抖音也会被拉取收藏
     return vault
 
 
@@ -422,7 +423,13 @@ def test_screen_leaves_sources_deleted_from_the_list_pending(run, bilibili, init
 
 @pytest.mark.parametrize(
     "setting",
-    ["batch_size = 0", 'batch_size = "十"', "interval = [5, 2]", "interval = [-1, 2]"],
+    [
+        "batch_size = 0",
+        'batch_size = "十"',
+        "interval = [5, 2]",
+        "interval = [-1, 2]",
+        "douyin_interval = [6, 3]",
+    ],
 )
 def test_invalid_backfill_settings_are_reported_before_anything_changes(
     run, bilibili, initialized, user_config_dir: Path, setting: str

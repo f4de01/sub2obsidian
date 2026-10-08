@@ -191,11 +191,11 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
 @vault_option
 @click.pass_obj
 def sync(ports: Ports, vault_path: Path | None) -> None:
-    """读取收件箱中的新链接，拉取 B站 收藏（新来源待筛，更新待筛清单），采集所有「已通过」的
-    来源并转写；原始材料的改动单独提交 git。
+    """读取收件箱中的新链接，拉取 B站 与抖音收藏（新来源待筛，更新待筛清单），采集所有
+    「已通过」的来源并转写；原始材料的改动单独提交 git。
 
-    回填每次每个平台只登记一批，下次 sync 从断点继续。缺少 ffmpeg、F2 等本机工具时整批中止，
-    已完成的改动照常提交。
+    回填每次每个平台只登记一批，下次 sync 从断点继续；抖音收藏只回填一次。一个平台拉取失败
+    不影响其他平台。采集或转写时缺少 ffmpeg、F2 等本机工具则整批中止，已完成的改动照常提交。
     """
     vault = _initialized_vault(vault_path)
     user_config = UserConfig.default()
@@ -288,22 +288,22 @@ def real_ports(user_config: UserConfig) -> Ports:
     """按用户配置组装真实的外部端口。"""
     from sub2obsidian.bilibili import BilibiliAdapter, HttpBilibiliClient
     from sub2obsidian.browser_credentials import BrowserCredentials
-    from sub2obsidian.douyin import DouyinAdapter
+    from sub2obsidian.douyin import DouyinAdapter, F2DouyinClient
     from sub2obsidian.feishu import FeishuInbox
     from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
 
     credentials = BrowserCredentials(user_config)
     try:
-        interval = user_config.backfill().interval
+        settings = user_config.backfill()
     except ConfigError:  # sync 读取设置时会报出这个错误
-        interval = BackfillSettings().interval
+        settings = BackfillSettings()
     return Ports(
         launcher=SystemLauncher(),
         credentials=credentials,
         adapters={
-            "bilibili": BilibiliAdapter(credentials, HttpBilibiliClient(interval)),
-            "douyin": DouyinAdapter(credentials),
+            "bilibili": BilibiliAdapter(credentials, HttpBilibiliClient(settings.interval)),
+            "douyin": DouyinAdapter(credentials, F2DouyinClient(settings.douyin_interval)),
             "wechat": WechatAdapter(),
         },
         transcriber=FasterWhisperTranscriber(),

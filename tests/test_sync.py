@@ -50,6 +50,7 @@ def article() -> FetchedSource:
 def initialized(run, vault: Path, credentials) -> Path:
     run.run("init", str(vault))
     credentials.login("bilibili")
+    credentials.login("douyin")  # 抖音也会被拉取收藏
     return vault
 
 
@@ -99,7 +100,6 @@ def test_sync_handles_pushed_douyin_share_text_video_and_note(
     )
 
     vault = initialized
-    credentials.login("douyin")
     douyin.posts[VIDEO_ID] = douyin_video()
     douyin.posts[NOTE_ID] = douyin_note()
     douyin.short_links[SHORT] = f"https://www.iesdouyin.com/share/video/{VIDEO_ID}/?region=CN"

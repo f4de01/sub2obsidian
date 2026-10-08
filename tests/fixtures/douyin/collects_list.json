@@ -1,0 +1,67 @@
+{
+  "status_code": 0,
+  "collects_list": [
+    {
+      "app_id": 6383,
+      "collects_cover": {
+        "uri": "fake-cover",
+        "url_list": [
+          "https://p3-pc.douyinpic.com/fake/7300000000000000001.jpeg"
+        ]
+      },
+      "collects_id": 7300000000000000001,
+      "collects_id_str": "7300000000000000001",
+      "collects_name": "AI 学习",
+      "create_time": 1710000000,
+      "follow_status": 0,
+      "followed_count": 0,
+      "is_normal_status": true,
+      "item_type": 2,
+      "last_collect_time": 1710086400,
+      "play_count": 0,
+      "states": 0,
+      "status": 0,
+      "system_type": 0,
+      "total_number": 12,
+      "user_id": 98765432101,
+      "user_info": {
+        "uid": "98765432101",
+        "nickname": "收藏者"
+      }
+    },
+    {
+      "app_id": 6383,
+      "collects_cover": {
+        "uri": "fake-cover",
+        "url_list": [
+          "https://p3-pc.douyinpic.com/fake/7300000000000000002.jpeg"
+        ]
+      },
+      "collects_id": 7300000000000000002,
+      "collects_id_str": "7300000000000000002",
+      "collects_name": "理财",
+      "create_time": 1715000000,
+      "follow_status": 0,
+      "followed_count": 0,
+      "is_normal_status": true,
+      "item_type": 2,
+      "last_collect_time": 1715086400,
+      "play_count": 0,
+      "states": 0,
+      "status": 0,
+      "system_type": 0,
+      "total_number": 3,
+      "user_id": 98765432101,
+      "user_info": {
+        "uid": "98765432101",
+        "nickname": "收藏者"
+      }
+    }
+  ],
+  "cursor": 2,
+  "has_more": false,
+  "total_number": 2,
+  "log_pb": {
+    "impr_id": "20241008000000FAKECOLLECTS"
+  }
+}

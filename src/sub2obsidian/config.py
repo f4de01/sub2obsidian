@@ -33,14 +33,34 @@ class BackfillSettings:
 
     batch_size：每次 sync 每个平台最多登记多少条新来源。
     interval：B站 请求之间的随机间隔（最短, 最长），单位秒；对回填与采集的请求都生效。
+    douyin_interval：抖音接口请求之间的随机间隔（最短, 最长），单位秒；对回填与采集都生效。
+    抖音风控更严，默认间隔更长。
     """
 
     batch_size: int = 50
     interval: tuple[float, float] = (1.0, 3.0)
+    douyin_interval: tuple[float, float] = (3.0, 6.0)
 
 
 def _number(value: object) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool) and value >= 0
+
+
+def _interval(section: dict[str, Any], key: str, default: tuple[float, float]) -> tuple[float, float]:
+    """[backfill] 表中的一项随机间隔：[最短, 最长] 秒，或一个数；写错时抛 ConfigError。"""
+    interval = section.get(key, list(default))
+    if _number(interval):
+        interval = [interval, interval]
+    if not (
+        isinstance(interval, list)
+        and len(interval) == 2
+        and all(_number(value) for value in interval)
+        and interval[0] <= interval[1]
+    ):
+        raise ConfigError(
+            f"config.toml 中 [backfill] {key} 应为 [最短, 最长] 秒（如 [2, 5]），现为 {interval!r}"
+        )
+    return (float(interval[0]), float(interval[1]))
 
 
 class UserConfig:
@@ -93,27 +113,18 @@ class UserConfig:
         return [str(term).strip() for term in terms if str(term).strip()]
 
     def backfill(self) -> BackfillSettings:
-        """[backfill] 表：batch_size（正整数）与 interval（[最短, 最长] 秒，或一个数）；
-        缺省取默认值，写错时抛 ConfigError。"""
+        """[backfill] 表：batch_size（正整数），interval 与 douyin_interval（[最短, 最长] 秒，
+        或一个数）；缺省取默认值，写错时抛 ConfigError。"""
         section = self.read().get("backfill", {})
         default = BackfillSettings()
         batch_size = section.get("batch_size", default.batch_size)
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
             raise ConfigError(f"config.toml 中 [backfill] batch_size 应为正整数，现为 {batch_size!r}")
-        interval = section.get("interval", list(default.interval))
-        if _number(interval):
-            interval = [interval, interval]
-        if not (
-            isinstance(interval, list)
-            and len(interval) == 2
-            and all(_number(value) for value in interval)
-            and interval[0] <= interval[1]
-        ):
-            raise ConfigError(
-                "config.toml 中 [backfill] interval 应为 [最短, 最长] 秒（如 [2, 5]），"
-                f"现为 {interval!r}"
-            )
-        return BackfillSettings(batch_size, (float(interval[0]), float(interval[1])))
+        return BackfillSettings(
+            batch_size,
+            _interval(section, "interval", default.interval),
+            _interval(section, "douyin_interval", default.douyin_interval),
+        )
 
     def remember_vault(self, vault: Path) -> None:
         """首次初始化时记下知识库路径，供后续命令使用；已配置的不覆盖。"""

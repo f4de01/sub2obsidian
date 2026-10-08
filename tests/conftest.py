@@ -68,11 +68,47 @@ class FakeCredentials:
         return f"sessionid={self.secret}"
 
 
-@dataclass
-class FakeBilibili:
-    """替换 B站 适配器：按 BV 号返回预置的采集结果，并记录每次采集。
+@dataclass(kw_only=True)
+class FakeFavorites:
+    """假适配器的拉取能力：收藏列表按 page_size 分页，游标是页码；读每一页前先要求登录。"""
 
-    要求登录：未经 FakeCredentials 登录时，采集报「请重新登录」。
+    # 收藏列表名 → 其中的收藏（从新到旧）
+    favorite_folders: dict[str, list[Favorite]] = field(default_factory=dict)
+    page_size: int = 3
+    # (收藏列表名, 游标) → 读这一页时抛出的异常（只抛一次）
+    page_failures: dict[tuple[str, str | None], BaseException] = field(default_factory=dict)
+    pages_read: list[tuple[str, str | None]] = field(default_factory=list)
+    lists_failure: BaseException | None = None  # 列出收藏列表时抛出的异常（只抛一次）
+    lists_read: int = 0  # 列出收藏列表的次数
+
+    def _require_login(self) -> None:
+        raise NotImplementedError
+
+    def favorite_lists(self) -> list[FavoriteList]:
+        self._require_login()
+        if self.lists_failure is not None:
+            failure, self.lists_failure = self.lists_failure, None
+            raise failure
+        self.lists_read += 1
+        return [FavoriteList(id=name, title=name) for name in self.favorite_folders]
+
+    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
+        self._require_login()
+        if (list_id, cursor) in self.page_failures:
+            raise self.page_failures.pop((list_id, cursor))
+        self.pages_read.append((list_id, cursor))
+        page = int(cursor or 0)
+        items = self.favorite_folders[list_id]
+        start = page * self.page_size
+        more = start + self.page_size < len(items)
+        return FavoritesPage(items[start : start + self.page_size], str(page + 1) if more else None)
+
+
+@dataclass
+class FakeBilibili(FakeFavorites):
+    """替换 B站 适配器：按 BV 号返回预置的采集结果，并记录每次采集；能拉取收藏。
+
+    要求登录：未经 FakeCredentials 登录时，采集与拉取都报「请重新登录」。
     """
 
     credentials: FakeCredentials
@@ -85,27 +121,9 @@ class FakeBilibili:
     audio_failures: dict[str, str] = field(default_factory=dict)
     audio_unavailable: dict[str, str] = field(default_factory=dict)
     audio_files: list[Path] = field(default_factory=list)  # 每次下载的临时音频
-    # 拉取：收藏列表名 → 其中的收藏（从新到旧），按 page_size 分页，游标是页码
-    favorite_folders: dict[str, list[Favorite]] = field(default_factory=dict)
-    page_size: int = 3
-    # (收藏列表名, 游标) → 读这一页时抛出的异常（只抛一次）
-    page_failures: dict[tuple[str, str | None], BaseException] = field(default_factory=dict)
-    pages_read: list[tuple[str, str | None]] = field(default_factory=list)
 
-    def favorite_lists(self) -> list[FavoriteList]:
+    def _require_login(self) -> None:
         self.credentials.cookies_file(self.platform)
-        return [FavoriteList(id=name, title=name) for name in self.favorite_folders]
-
-    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
-        self.credentials.cookies_file(self.platform)
-        if (list_id, cursor) in self.page_failures:
-            raise self.page_failures.pop((list_id, cursor))
-        self.pages_read.append((list_id, cursor))
-        page = int(cursor or 0)
-        items = self.favorite_folders[list_id]
-        start = page * self.page_size
-        more = start + self.page_size < len(items)
-        return FavoritesPage(items[start : start + self.page_size], str(page + 1) if more else None)
 
     def expand_short_link(self, url: str) -> str:
         if url not in self.short_links:
@@ -164,10 +182,10 @@ class FakeWechat:
 
 
 @dataclass
-class FakeDouyin:
-    """替换抖音适配器：按作品 ID 返回预置的视频或图文，并记录每次采集与音频下载。
+class FakeDouyin(FakeFavorites):
+    """替换抖音适配器：按作品 ID 返回预置的视频或图文，并记录每次采集与音频下载；能拉取收藏。
 
-    要求登录：未经 FakeCredentials 登录时，采集报「请重新登录 抖音」。
+    要求登录：未经 FakeCredentials 登录时，采集与拉取都报「请重新登录 抖音」。
     """
 
     credentials: FakeCredentials
@@ -178,6 +196,9 @@ class FakeDouyin:
     short_links: dict[str, str] = field(default_factory=dict)  # 短链 → 跳转到的完整链接
     fetched: list[str] = field(default_factory=list)
     audio_files: list[Path] = field(default_factory=list)  # 每次下载的临时音频
+
+    def _require_login(self) -> None:
+        self.credentials.cookie_string(self.platform)
 
     def expand_short_link(self, url: str) -> str:
         if url not in self.short_links:
@@ -252,10 +273,11 @@ class Cli:
         ports = Ports(
             launcher=self.launcher,
             credentials=self.credentials,
+            # 抖音排在 B站 之前：抖音拉取失败时 B站 回填照常完成，才不是碰巧
             adapters={
+                "douyin": self.douyin,
                 "bilibili": self.bilibili,
                 "wechat": self.wechat,
-                "douyin": self.douyin,
             },
             transcriber=self.transcriber,
             inbox=self.inbox,

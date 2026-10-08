@@ -112,7 +112,12 @@ def _douyin_post(url: str) -> SourceRef | None:
         kind, aweme_id = "video", modal[0]
     else:
         raise UnsupportedLink(f"不是抖音作品链接：{url}")
-    path = "note" if kind in ("note", "slides") else "video"
+    return douyin_post_ref(aweme_id, note=kind in ("note", "slides"))
+
+
+def douyin_post_ref(aweme_id: str, *, note: bool) -> SourceRef:
+    """抖音作品的来源身份；规范链接：图文为 /note/<ID>，其余为 /video/<ID>。"""
+    path = "note" if note else "video"
     return SourceRef("douyin", aweme_id, f"https://www.douyin.com/{path}/{aweme_id}")
 
 

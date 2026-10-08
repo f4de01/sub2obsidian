@@ -1,6 +1,9 @@
 """抖音平台适配器：基于 F2 采集作品详情（需登录 cookie 与接口签名），视频下载后供 ASR 转写，
 图文按文章处理（文字与全部图片）。抖音没有平台字幕。
 
+拉取：经 F2 的 collection / collects 模式列出登录账号的全部收藏与各个收藏夹，只取元数据，
+供回填（backfill.py）分批登记为待筛的来源。
+
 网络层（DouyinClient）与解析分开：契约测试用 F2 返回结构的样本回放网络层，验证解析与判定。
 F2 失效（抖音每隔几个月更换签名）时优先升级 F2；持续失败时评估改用 TikHub（ADR-0003）。
 """
@@ -17,13 +20,23 @@ import subprocess
 import time
 import urllib.error
 import urllib.request
+from collections.abc import Awaitable, Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlsplit
 
 from sub2obsidian.credentials import CredentialProvider
-from sub2obsidian.links import SourceRef
-from sub2obsidian.platforms import Article, Asset, FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.links import SourceRef, douyin_post_ref
+from sub2obsidian.platforms import (
+    Article,
+    Asset,
+    Favorite,
+    FavoriteList,
+    FavoritesPage,
+    FetchedSource,
+    FetchFailed,
+    SourceUnavailable,
+)
 from sub2obsidian.tools import MissingTool, require_ffmpeg
 
 PLATFORM = "douyin"
@@ -67,6 +80,28 @@ class DouyinClient(Protocol):
         失败抛 FetchFailed，缺少 ffmpeg 抛 MissingTool。"""
         ...
 
+    # 列出收藏：返回值与 aweme_detail 一样，抖音回了空响应时为 None；网络失败抛 FetchFailed，
+    # 缺少 F2 抛 MissingTool。只能列出 cookie 所属账号的收藏。
+
+    def collection(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        """「收藏」页全部收藏作品的一页（F2 `DouyinCrawler.fetch_user_collection`）。"""
+        ...
+
+    def collects(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        """收藏夹列表的一页（F2 `DouyinCrawler.fetch_user_collects`）。"""
+        ...
+
+    def collects_video(
+        self, collects_id: str, cursor: int, count: int, cookie: str
+    ) -> dict[str, Any] | None:
+        """一个收藏夹中作品的一页（F2 `DouyinCrawler.fetch_user_collects_video`）。"""
+        ...
+
+
+ALL_FAVORITES = "collection"  # 「收藏」页的全部收藏作品
+FOLDER_PREFIX = "collects-"  # 收藏夹的列表 ID 为 collects-<收藏夹 ID>
+PAGE_SIZE = 20  # 每次请求的条数（F2 的默认值）
+
 
 class DouyinAdapter:
     platform = PLATFORM
@@ -78,22 +113,43 @@ class DouyinAdapter:
     def expand_short_link(self, url: str) -> str:
         return self.client.redirect_target(url)
 
+    def favorite_lists(self) -> list[FavoriteList]:
+        """全部收藏，加上每个收藏夹（收藏夹里的作品多半也在全部收藏里，登记时去重）。"""
+        cookie = self.credentials.cookie_string(PLATFORM)
+        lists = [FavoriteList(ALL_FAVORITES, "全部收藏")]
+        cursor = 0
+        while True:
+            response = _checked(self.client.collects(cursor, PAGE_SIZE, cookie))
+            for folder in response.get("collects_list") or []:
+                folder_id = folder.get("collects_id_str") or str(folder.get("collects_id") or "")
+                if folder_id:
+                    name = folder.get("collects_name") or folder_id
+                    lists.append(FavoriteList(FOLDER_PREFIX + folder_id, f"收藏夹：{name}"))
+            next_cursor = _next_cursor(response, cursor)
+            if next_cursor is None:
+                return lists
+            cursor = next_cursor
+
+    def favorites(self, list_id: str, cursor: str | None) -> FavoritesPage:
+        cookie = self.credentials.cookie_string(PLATFORM)
+        start = int(cursor) if cursor else 0
+        if list_id.startswith(FOLDER_PREFIX):
+            folder_id = list_id.removeprefix(FOLDER_PREFIX)
+            response = self.client.collects_video(folder_id, start, PAGE_SIZE, cookie)
+        else:
+            response = self.client.collection(start, PAGE_SIZE, cookie)
+        response = _checked(response)
+        items = [_favorite(post) for post in response.get("aweme_list") or [] if post.get("aweme_id")]
+        next_cursor = _next_cursor(response, start)
+        return FavoritesPage(items, None if next_cursor is None else str(next_cursor))
+
     def fetch(self, ref: SourceRef) -> FetchedSource:
         detail = self._detail(ref)
-        common = {
-            "title": _title(detail, ref),
-            "author": (detail.get("author") or {}).get("nickname") or None,
-            "published": _published(detail.get("create_time")),
-            "description": (detail.get("desc") or "").strip(),
-        }
+        common = _common(detail, ref)
         if images := _image_urls(detail):
             return FetchedSource(kind="图文", article=self._article(detail, images), **common)
-        duration = detail.get("duration") or (detail.get("video") or {}).get("duration")
         return FetchedSource(
-            kind="视频",
-            duration=round(duration / 1000) if duration else None,
-            cover=self._cover(detail),
-            **common,
+            kind="视频", duration=_duration(detail), cover=self._cover(detail), **common
         )
 
     def download_audio(self, ref: SourceRef, directory: Path) -> Path:
@@ -108,13 +164,8 @@ class DouyinAdapter:
 
     def _detail(self, ref: SourceRef) -> dict[str, Any]:
         """作品详情；已删除、私密等抛 SourceUnavailable，其余问题抛 FetchFailed。"""
-        response = self.client.aweme_detail(ref.platform_id, self.credentials.cookie_string(PLATFORM))
-        if not response:
-            raise FetchFailed(EMPTY_RESPONSE)
-        code = response.get("status_code")
-        if code not in (0, None):
-            message = response.get("status_msg") or "抖音接口出错"
-            raise FetchFailed(f"{message}（{code}）")
+        cookie = self.credentials.cookie_string(PLATFORM)
+        response = _checked(self.client.aweme_detail(ref.platform_id, cookie))
         detail = response.get("aweme_detail")
         if not detail:
             reason = (response.get("filter_detail") or {}).get("detail_msg")
@@ -142,6 +193,62 @@ class DouyinAdapter:
         blocks = [re.sub(r"#(?=\S)", r"\\#", line) for line in paragraphs]
         blocks += [f"![]({image.name})" for image in images]
         return Article(markdown="\n\n".join(blocks) + "\n", images=images)
+
+
+def _checked(response: dict[str, Any] | None) -> dict[str, Any]:
+    """接口响应；空响应（cookie 或签名失效）与出错的状态码抛 FetchFailed。"""
+    if not response:
+        raise FetchFailed(EMPTY_RESPONSE)
+    code = response.get("status_code")
+    if code not in (0, None):
+        message = response.get("status_msg") or "抖音接口出错"
+        raise FetchFailed(f"{message}（{code}）")
+    return response
+
+
+def _next_cursor(response: dict[str, Any], cursor: int) -> int | None:
+    """下一页的游标；没有下一页时为 None。游标不前进时再读只会得到同一页：视为适配器失效。"""
+    if not response.get("has_more"):
+        return None
+    try:
+        next_cursor = int(response.get("cursor"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        next_cursor = None
+    if next_cursor is None or next_cursor == cursor:
+        raise FetchFailed(
+            f"抖音收藏列表的翻页游标没有前进（{response.get('cursor')!r}）；{ADAPTER_BROKEN}"
+        )
+    return next_cursor
+
+
+def _favorite(post: dict[str, Any]) -> Favorite:
+    """收藏列表中的一条作品（结构与作品详情相同）：只取元数据。"""
+    images = _image_urls(post)
+    ref = douyin_post_ref(str(post["aweme_id"]), note=bool(images))
+    deleted = (post.get("status") or {}).get("is_delete")
+    return Favorite(
+        ref=ref,
+        kind="图文" if images else "视频",
+        duration=None if images else _duration(post),
+        unavailable="作品已删除" if deleted else None,
+        **_common(post, ref),
+    )
+
+
+def _common(detail: dict[str, Any], ref: SourceRef) -> dict[str, Any]:
+    """视频与图文共有的元数据。"""
+    return {
+        "title": _title(detail, ref),
+        "author": (detail.get("author") or {}).get("nickname") or None,
+        "published": _published(detail.get("create_time")),
+        "description": (detail.get("desc") or "").strip(),
+    }
+
+
+def _duration(detail: dict[str, Any]) -> int | None:
+    """视频时长（秒）；接口给的是毫秒。"""
+    duration = detail.get("duration") or (detail.get("video") or {}).get("duration")
+    return round(duration / 1000) if duration else None
 
 
 def _url_list(address: Any) -> list[str]:
@@ -198,9 +305,10 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
 
 
 class F2DouyinClient:
-    """真实网络层：F2 负责作品详情接口（签名、请求头）；短链、图片与视频直接用 urllib。
+    """真实网络层：F2 负责作品详情与收藏列表接口（签名、请求头）；短链、图片与视频直接用 urllib。
 
-    接口请求之间随机间隔数秒，图片与视频下载间隔较短。F2 只在真正采集时才导入。
+    接口请求之间随机间隔 api_interval 秒（config.toml 的 [backfill] douyin_interval），图片与
+    视频下载间隔较短。F2 只在真正请求接口时才导入。
     """
 
     HEADERS = {
@@ -247,9 +355,52 @@ class F2DouyinClient:
             raise FetchFailed(f"抖音短链解析失败：{url}：{error}") from error
 
     def aweme_detail(self, aweme_id: str, cookie: str) -> dict[str, Any] | None:
+        return self._crawl(
+            "作品详情",
+            cookie,
+            lambda crawler, models: crawler.fetch_post_detail(models.PostDetail(aweme_id=aweme_id)),
+        )
+
+    def collection(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        return self._crawl(
+            "收藏",
+            cookie,
+            lambda crawler, models: crawler.fetch_user_collection(
+                models.UserCollection(cursor=cursor, count=count)
+            ),
+        )
+
+    def collects(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        return self._crawl(
+            "收藏夹列表",
+            cookie,
+            lambda crawler, models: crawler.fetch_user_collects(
+                models.UserCollects(cursor=cursor, count=count)
+            ),
+        )
+
+    def collects_video(
+        self, collects_id: str, cursor: int, count: int, cookie: str
+    ) -> dict[str, Any] | None:
+        return self._crawl(
+            "收藏夹作品",
+            cookie,
+            lambda crawler, models: crawler.fetch_user_collects_video(
+                models.UserCollectsVideo(collects_id=collects_id, cursor=cursor, count=count)
+            ),
+        )
+
+    def _crawl(
+        self,
+        api: str,
+        cookie: str,
+        request: Callable[[Any, Any], Awaitable[dict[str, Any]]],
+    ) -> dict[str, Any] | None:
+        """经 F2 的 DouyinCrawler 请求一个接口（request 用 F2 的请求模型发起请求）；
+        与上一次接口请求随机间隔 api_interval 秒。"""
         try:
+            from f2.apps.douyin import model as models
             from f2.apps.douyin.crawler import DouyinCrawler
-            from f2.apps.douyin.model import PostDetail
             from f2.apps.douyin.utils import ClientConfManager
             from f2.exceptions.api_exceptions import APIError, APIRetryExhaustedError
         except ImportError as error:
@@ -268,7 +419,7 @@ class F2DouyinClient:
 
         async def fetch() -> dict[str, Any]:
             async with DouyinCrawler(kwargs) as crawler:
-                return await crawler.fetch_post_detail(PostDetail(aweme_id=aweme_id))
+                return await request(crawler, models)
 
         self._last_api = self._wait(self._last_api, self.api_interval)
         try:
@@ -276,7 +427,7 @@ class F2DouyinClient:
         except APIRetryExhaustedError:
             return None  # 抖音一直回空响应：cookie 或签名失效
         except APIError as error:
-            raise FetchFailed(f"访问抖音作品详情接口失败：{error}") from error
+            raise FetchFailed(f"访问抖音{api}接口失败：{error}") from error
 
     def download(self, url: str) -> bytes:
         self._last_media = self._wait(self._last_media, self.media_interval)

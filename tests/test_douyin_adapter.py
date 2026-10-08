@@ -1,4 +1,4 @@
-"""抖音适配器的契约测试：用 F2 返回结构的样本回放网络层。
+"""抖音适配器的契约测试：用 F2 返回结构的样本回放网络层（作品详情、列出收藏）。
 
 样本说明见 tests/fixtures/douyin/README.md。
 """
@@ -14,9 +14,15 @@ from typing import Any
 import pytest
 
 from sub2obsidian.credentials import LoginRequired
-from sub2obsidian.douyin import DouyinAdapter
+from sub2obsidian.douyin import PAGE_SIZE, DouyinAdapter
 from sub2obsidian.links import SourceRef
-from sub2obsidian.platforms import FetchFailed, SourceUnavailable
+from sub2obsidian.platforms import (
+    Favorite,
+    FavoriteList,
+    FavoritesAdapter,
+    FetchFailed,
+    SourceUnavailable,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures" / "douyin"
 VIDEO = SourceRef("douyin", "7412345678901234567", "https://www.douyin.com/video/7412345678901234567")
@@ -29,6 +35,10 @@ def sample(name: str) -> dict[str, Any]:
     return json.loads((FIXTURES / f"post_detail_{name}.json").read_text(encoding="utf-8"))
 
 
+def listing(name: str) -> dict[str, Any]:
+    return json.loads((FIXTURES / f"{name}.json").read_text(encoding="utf-8"))
+
+
 @dataclass
 class ReplayClient:
     """按样本回放抖音网络层；response 为 None 表示抖音返回了空响应。记录请求以便断言。"""
@@ -38,6 +48,24 @@ class ReplayClient:
     details: list[tuple[str, str]] = field(default_factory=list)  # (作品 ID, cookie)
     downloads: list[str] = field(default_factory=list)
     audio_requests: list[list[str]] = field(default_factory=list)
+    # 列出收藏：(接口, 收藏夹 ID 或 None, 游标) → 响应；None 表示空响应
+    pages: dict[tuple[str, str | None, int], dict[str, Any] | None] = field(default_factory=dict)
+    list_requests: list[tuple[str, str | None, int, int, str]] = field(default_factory=list)
+
+    def _page(self, api: str, collects_id: str | None, cursor: int, count: int, cookie: str):
+        self.list_requests.append((api, collects_id, cursor, count, cookie))
+        return copy.deepcopy(self.pages[(api, collects_id, cursor)])
+
+    def collection(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        return self._page("collection", None, cursor, count, cookie)
+
+    def collects(self, cursor: int, count: int, cookie: str) -> dict[str, Any] | None:
+        return self._page("collects", None, cursor, count, cookie)
+
+    def collects_video(
+        self, collects_id: str, cursor: int, count: int, cookie: str
+    ) -> dict[str, Any] | None:
+        return self._page("collects_video", collects_id, cursor, count, cookie)
 
     def redirect_target(self, url: str) -> str:
         return self.redirects[url]
@@ -250,3 +278,146 @@ def test_short_link_is_expanded_through_its_redirect():
     client = ReplayClient(redirects={short: target})
 
     assert adapter(client).expand_short_link(short) == target
+
+
+# ---- 列出收藏（F2 的 collection / collects 模式）----
+
+AI_FOLDER = "7300000000000000001"
+
+
+def test_douyin_adapter_supports_pulling_favorites():
+    assert isinstance(adapter(ReplayClient()), FavoritesAdapter)
+
+
+def test_favorite_lists_are_all_favorites_then_every_folder():
+    client = ReplayClient(pages={("collects", None, 0): listing("collects_list")})
+
+    lists = adapter(client).favorite_lists()
+
+    assert lists == [
+        FavoriteList("collection", "全部收藏"),
+        FavoriteList(f"collects-{AI_FOLDER}", "收藏夹：AI 学习"),
+        FavoriteList("collects-7300000000000000002", "收藏夹：理财"),
+    ]
+    assert client.list_requests == [("collects", None, 0, PAGE_SIZE, COOKIE)]
+
+
+def test_favorite_folders_spanning_several_pages_are_all_listed():
+    first = listing("collects_list")
+    second = copy.deepcopy(first)
+    first["collects_list"] = first["collects_list"][:1]
+    first["has_more"], first["cursor"] = True, 1
+    second["collects_list"] = second["collects_list"][1:]
+    client = ReplayClient(pages={("collects", None, 0): first, ("collects", None, 1): second})
+
+    lists = adapter(client).favorite_lists()
+
+    assert [favorite_list.title for favorite_list in lists] == [
+        "全部收藏",
+        "收藏夹：AI 学习",
+        "收藏夹：理财",
+    ]
+
+
+def test_all_favorites_page_maps_each_post_to_favorite_metadata():
+    client = ReplayClient(pages={("collection", None, 0): listing("collection_page")})
+
+    page = adapter(client).favorites("collection", None)
+
+    video, note, deleted = page.items
+    assert video == Favorite(
+        ref=VIDEO,
+        kind="视频",
+        title="三分钟讲清楚 MCP 是什么",
+        author="某AI博主",
+        published="2024-09-10T19:30:00+08:00",
+        duration=183,
+        description="三分钟讲清楚 MCP 是什么 #AI #大模型 #MCP",
+    )
+    assert note.ref == NOTE  # 图文的规范链接是 /note/
+    assert note.kind == "图文"
+    assert note.title == "RAG 入门笔记"
+    assert note.duration is None
+    assert note.published == "2024-10-01T08:00:00+08:00"
+    assert note.unavailable is None
+    assert deleted.ref.platform_id == "7445678901234567890"
+    assert deleted.unavailable == "作品已删除"
+    assert page.next == "1727712000123456"
+    # 只取元数据：不下载封面、图片，也不请求作品详情
+    assert client.downloads == [] and client.details == []
+    assert client.list_requests == [("collection", None, 0, PAGE_SIZE, COOKIE)]
+
+
+def test_folder_page_is_read_from_the_cursor_and_its_last_page_has_no_next():
+    cursor = 1727712000123456
+    client = ReplayClient(pages={("collects_video", AI_FOLDER, cursor): listing("collects_video_page")})
+
+    page = adapter(client).favorites(f"collects-{AI_FOLDER}", str(cursor))
+
+    [item] = page.items
+    assert item.ref == SourceRef(
+        "douyin", "7456789012345678901", "https://www.douyin.com/video/7456789012345678901"
+    )
+    assert item.title == "Agent 工作流拆解"
+    assert item.duration == 95
+    assert page.next is None
+    assert client.list_requests == [("collects_video", AI_FOLDER, cursor, PAGE_SIZE, COOKIE)]
+
+
+def test_empty_favorites_page_is_a_last_page():
+    response = {"status_code": 0, "aweme_list": None, "cursor": 0, "has_more": 0}
+    client = ReplayClient(pages={("collection", None, 0): response})
+
+    page = adapter(client).favorites("collection", None)
+
+    assert (page.items, page.next) == ([], None)
+
+
+def test_favorites_empty_response_says_to_log_in_again_or_upgrade_f2():
+    """cookie 或签名失效时抖音只回空响应：停止本平台的回填，两种出路都告诉用户。"""
+    client = ReplayClient(pages={("collection", None, 0): None})
+
+    with pytest.raises(FetchFailed) as raised:
+        adapter(client).favorites("collection", None)
+
+    message = str(raised.value)
+    assert "sub2obsidian login douyin" in message
+    assert "F2" in message
+    assert "ADR-0003" in message
+
+
+def test_favorite_lists_empty_response_is_a_retryable_failure():
+    client = ReplayClient(pages={("collects", None, 0): None})
+
+    with pytest.raises(FetchFailed, match="sub2obsidian login douyin"):
+        adapter(client).favorite_lists()
+
+
+def test_favorites_error_status_code_is_a_retryable_failure_with_douyins_message():
+    response = {"status_code": 2053, "status_msg": "请求太频繁，请稍后再试"}
+    client = ReplayClient(pages={("collection", None, 0): response})
+
+    with pytest.raises(FetchFailed, match="请求太频繁，请稍后再试"):
+        adapter(client).favorites("collection", None)
+
+
+def test_favorites_page_whose_cursor_does_not_move_points_at_the_adapter():
+    """游标不前进时再读只会得到同一页：报适配器可能失效，而不是把列表当作读完。"""
+    cursor = 1727712000123456
+    response = listing("collection_page")
+    response["cursor"] = cursor
+    client = ReplayClient(pages={("collection", None, cursor): response})
+
+    with pytest.raises(FetchFailed, match="适配器可能已失效"):
+        adapter(client).favorites("collection", str(cursor))
+
+
+def test_listing_favorites_without_login_asks_to_log_in_before_any_request():
+    client = ReplayClient()
+
+    with pytest.raises(LoginRequired, match="请重新登录 抖音"):
+        adapter(client, Credentials(logged_in=False)).favorite_lists()
+    with pytest.raises(LoginRequired):
+        adapter(client, Credentials(logged_in=False)).favorites("collection", None)
+
+    assert client.list_requests == []

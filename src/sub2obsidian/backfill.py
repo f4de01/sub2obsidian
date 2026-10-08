@@ -7,6 +7,12 @@
 一个收藏列表读到末尾即回填完成，此后每次 sync 只从列表开头往后读，直到遇到一整页都已
 登记过的收藏为止（收藏按时间从新到旧排列），以发现新收藏。已拒绝与已失效的来源仍留着
 存根，所以不会被重新登记、也不会再进入待筛清单。
+
+抖音的存量只回填一次，日常增量由用户推送（抖音风控严、签名每隔几个月失效，不宜每次 sync
+都去请求）：它的全部收藏列表读完后，此后的 sync 不再拉取抖音收藏。
+
+一个平台拉取失败（登录失效、风控、签名失效、缺少 F2 等本机工具）只结束这个平台本次的拉取，
+不影响其他平台与 sync 的其余步骤。
 """
 
 from __future__ import annotations
@@ -23,8 +29,12 @@ from sub2obsidian.credentials import CredentialError
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import AdapterError, Favorite, FavoritesAdapter, PlatformAdapter
 from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
+from sub2obsidian.tools import MissingTool
 
 BACKFILL_STATE_FILE = "backfill.toml"
+
+# 只回填存量、不拉取增量的平台
+ONE_TIME_PLATFORMS = {"douyin"}
 
 
 @dataclass
@@ -38,25 +48,27 @@ class ListProgress:
 @dataclass
 class BackfillState:
     lists: dict[str, dict[str, ListProgress]] = field(default_factory=dict)  # 平台 → 列表 → 进度
+    complete: set[str] = field(default_factory=set)  # 回填已经完成、不再拉取的平台
 
     @classmethod
     def load(cls, path: Path) -> BackfillState:
         if not path.exists():
             return cls()
         data = tomllib.loads(path.read_text(encoding="utf-8"))
-        return cls(
-            {
-                platform: {
-                    list_id: ListProgress(entry.get("cursor"), bool(entry.get("done", False)))
-                    for list_id, entry in lists.items()
-                }
-                for platform, lists in data.items()
+        complete = set(data.pop(_COMPLETE, []))
+        lists = {
+            platform: {
+                list_id: ListProgress(entry.get("cursor"), bool(entry.get("done", False)))
+                for list_id, entry in platform_lists.items()
             }
-        )
+            for platform, platform_lists in data.items()
+        }
+        return cls(lists, complete)
 
     def save(self, path: Path) -> None:
         """先写临时文件再替换，避免写坏。"""
-        data = {
+        data: dict[str, object] = {_COMPLETE: sorted(self.complete)} if self.complete else {}
+        data |= {
             platform: {
                 list_id: {"done": progress.done}
                 | ({"cursor": progress.cursor} if progress.cursor is not None else {})
@@ -68,6 +80,10 @@ class BackfillState:
         temporary = path.with_suffix(".toml.tmp")
         temporary.write_text(tomli_w.dumps(data), encoding="utf-8", newline="\n")
         temporary.replace(path)
+
+
+# backfill.toml 顶层记录回填已完成的平台的键；其余顶层键都是平台名
+_COMPLETE = "complete"
 
 
 def pull(
@@ -91,6 +107,8 @@ def _pull_platform(
 ) -> Iterator[Outcome]:
     name = PLATFORM_NAMES.get(platform, platform)
     state = BackfillState.load(state_file)
+    if platform in state.complete:
+        return
     progress = state.lists.setdefault(platform, {})
     remaining = batch_size
     try:
@@ -121,8 +139,13 @@ def _pull_platform(
             if not entry.done:
                 entry.done, entry.cursor = True, None
                 state.save(state_file)
-    except (AdapterError, CredentialError) as error:
+    except (AdapterError, CredentialError, MissingTool) as error:
         yield Outcome(f"拉取 {name} 收藏失败：{error}（下次 sync 从断点继续）", ok=False)
+        return
+    if platform in ONE_TIME_PLATFORMS:
+        state.complete.add(platform)
+        state.save(state_file)
+        yield Outcome(f"{name} 回填完成：此后 sync 不再拉取{name}收藏，新收藏请分享到收件箱", ok=True)
 
 
 def _batch_full(name: str, batch_size: int) -> Outcome:
