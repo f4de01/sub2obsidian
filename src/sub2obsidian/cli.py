@@ -175,6 +175,7 @@ def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> 
 def main() -> None:
     from sub2obsidian.bilibili import BilibiliAdapter
     from sub2obsidian.browser_credentials import BrowserCredentials
+    from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
 
     credentials = BrowserCredentials(UserConfig.default())
@@ -182,7 +183,7 @@ def main() -> None:
         obj=Ports(
             launcher=SystemLauncher(),
             credentials=credentials,
-            adapters={"bilibili": BilibiliAdapter(credentials)},
+            adapters={"bilibili": BilibiliAdapter(credentials), "wechat": WechatAdapter()},
             transcriber=FasterWhisperTranscriber(),
         )
     )

@@ -185,6 +185,7 @@ class SourceRepository:
         self,
         source: Source,
         *,
+        kind: Kind,
         title: str,
         author: str | None,
         published: str | None,
@@ -193,7 +194,15 @@ class SourceRepository:
         cover: str | None,
     ) -> None:
         """写入采集到的元数据；封面为来源目录中的文件名。"""
-        source.meta.update({"标题": title, "作者": author, "发布时间": published, "时长": duration})
+        source.meta.update(
+            {
+                "类型": str(kind),
+                "标题": title,
+                "作者": author,
+                "发布时间": published,
+                "时长": duration,
+            }
+        )
         source.body = _body(title, description, cover)
         self._save(source)
 

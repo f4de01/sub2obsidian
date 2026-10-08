@@ -1,6 +1,6 @@
 """行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。
 
-四个外部端口中，本文件提供平台适配器、凭据提供者与转写引擎的假实现（收件箱随后续工单加入）。
+四个外部端口中，本文件提供平台适配器（B站、公众号）、凭据提供者与转写引擎的假实现（收件箱随后续工单加入）。
 """
 
 from __future__ import annotations
@@ -99,6 +99,37 @@ class FakeBilibili:
 
 
 @dataclass
+class FakeWechat:
+    """替换公众号文章适配器：按平台内 ID 返回预置的文章，并记录每次采集。无需登录。"""
+
+    platform: str = "wechat"
+    articles: dict[str, FetchedSource] = field(default_factory=dict)
+    unavailable: dict[str, str] = field(default_factory=dict)
+    failures: dict[str, str] = field(default_factory=dict)
+    short_links: dict[str, str] = field(default_factory=dict)  # 短码链接 → 长链接
+    unavailable_short_links: dict[str, str] = field(default_factory=dict)  # 短码链接 → 失效原因
+    fetched: list[str] = field(default_factory=list)
+
+    def expand_short_link(self, url: str) -> str:
+        if url in self.unavailable_short_links:
+            raise SourceUnavailable(self.unavailable_short_links[url])
+        if url not in self.short_links:
+            raise FetchFailed(f"无法解析公众号短链：{url}")
+        return self.short_links[url]
+
+    def fetch(self, ref: SourceRef) -> FetchedSource:
+        self.fetched.append(ref.platform_id)
+        if ref.platform_id in self.failures:
+            raise FetchFailed(self.failures.pop(ref.platform_id))
+        if ref.platform_id in self.unavailable:
+            raise SourceUnavailable(self.unavailable[ref.platform_id])
+        return self.articles[ref.platform_id]
+
+    def download_audio(self, ref: SourceRef, directory: Path) -> Path:  # pragma: no cover
+        raise AssertionError("文章没有音频")
+
+
+@dataclass
 class FakeTranscriber:
     """替换 faster-whisper：按音频内容返回预置分段，并记录每次调用收到的音频与术语。"""
 
@@ -120,13 +151,14 @@ class Cli:
     launcher: FakeLauncher
     credentials: FakeCredentials
     bilibili: FakeBilibili
+    wechat: FakeWechat
     transcriber: FakeTranscriber
 
     def run(self, *args: str) -> Result:
         ports = Ports(
             launcher=self.launcher,
             credentials=self.credentials,
-            adapters={"bilibili": self.bilibili},
+            adapters={"bilibili": self.bilibili, "wechat": self.wechat},
             transcriber=self.transcriber,
         )
         return CliRunner().invoke(cli, list(args), obj=ports, catch_exceptions=False)
@@ -157,6 +189,11 @@ def bilibili(credentials: FakeCredentials) -> FakeBilibili:
 
 
 @pytest.fixture
+def wechat() -> FakeWechat:
+    return FakeWechat()
+
+
+@pytest.fixture
 def transcriber() -> FakeTranscriber:
     return FakeTranscriber()
 
@@ -166,9 +203,16 @@ def run(
     launcher: FakeLauncher,
     credentials: FakeCredentials,
     bilibili: FakeBilibili,
+    wechat: FakeWechat,
     transcriber: FakeTranscriber,
 ) -> Cli:
-    return Cli(launcher=launcher, credentials=credentials, bilibili=bilibili, transcriber=transcriber)
+    return Cli(
+        launcher=launcher,
+        credentials=credentials,
+        bilibili=bilibili,
+        wechat=wechat,
+        transcriber=transcriber,
+    )
 
 
 @pytest.fixture

@@ -24,6 +24,7 @@ class SourceUnavailable(AdapterError):
 class FetchFailed(AdapterError):
     """可重试的失败（网络、风控、验证页等）：来源保持原状态，下次再试。"""
 
+
 @dataclass(frozen=True)
 class Asset:
     """随来源落入原始材料的一个文件（封面、图片）。"""
@@ -33,17 +34,27 @@ class Asset:
 
 
 @dataclass(frozen=True)
+class Article:
+    """文章、图文的正文：Markdown 中的图片已改写为对 images 中本地文件名的引用。"""
+
+    markdown: str
+    images: list[Asset]
+    byline: str | None = None  # 原文署名（公众号文章中公众号名之外的作者）
+
+
+@dataclass(frozen=True)
 class FetchedSource:
     """适配器按 ID 采集到的原始内容。"""
 
     kind: str  # 视频 / 文章 / 图文
     title: str
-    author: str | None = None
+    author: str | None = None  # UP主、公众号名等发布者
     published: str | None = None  # ISO 8601，带时区
     duration: int | None = None  # 秒，仅视频
     description: str = ""
     cover: Asset | None = None
     transcript: Transcript | None = None  # 平台字幕；没有时为 None，留待 ASR
+    article: Article | None = None  # 文章、图文的正文
 
 
 class PlatformAdapter(Protocol):

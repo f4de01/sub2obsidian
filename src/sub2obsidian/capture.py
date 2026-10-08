@@ -8,11 +8,22 @@ from pathlib import Path
 
 from sub2obsidian import git, transcript
 from sub2obsidian.credentials import CredentialError
-from sub2obsidian.links import UnsupportedLink, extract_urls, normalize
-from sub2obsidian.platforms import FetchedSource, FetchFailed, PlatformAdapter, SourceUnavailable
+from sub2obsidian.links import PLATFORM_NAMES, UnsupportedLink, extract_urls, normalize
+from sub2obsidian.platforms import (
+    AdapterError,
+    Article,
+    FetchedSource,
+    FetchFailed,
+    PlatformAdapter,
+    SourceUnavailable,
+)
 from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
 
 TRANSCRIPT_FILE = "口播稿.md"
+BODY_FILE = "正文.md"
+
+# 采集前（含失效存根）按平台假定的来源类型；采集后以适配器给出的类型为准
+_PLATFORM_KINDS = {"wechat": Kind.ARTICLE}
 
 
 @dataclass(frozen=True)
@@ -54,12 +65,13 @@ def _capture_url(
 ) -> Outcome:
     try:
         ref = normalize(url, lambda platform, short: adapters[platform].expand_short_link(short))
-    except (UnsupportedLink, FetchFailed) as error:
+    except (UnsupportedLink, AdapterError) as error:
         return Outcome(str(error), ok=False)
     adapter = adapters[ref.platform]
     source = repo.find(ref)
     if source is None:
-        source = repo.create(ref, kind=Kind.VIDEO, origin=Origin.PUSH, status=Status.APPROVED)
+        kind = _PLATFORM_KINDS.get(ref.platform, Kind.VIDEO)
+        source = repo.create(ref, kind=kind, origin=Origin.PUSH, status=Status.APPROVED)
     elif source.status is not Status.APPROVED:
         # 只有停在「已通过」的来源（上次采集失败）才重试
         return Outcome(f"来源已存在：{source.title}（{ref.display}），{source.status}", ok=True)
@@ -82,8 +94,14 @@ def _capture_url(
 def _store(repo: SourceRepository, source: Source, fetched: FetchedSource) -> None:
     if fetched.cover is not None:
         repo.add_file(source, fetched.cover.name, fetched.cover.data)
+    if fetched.article is not None:
+        for image in fetched.article.images:
+            repo.add_file(source, image.name, image.data)
+        body = _render_body(source, fetched, fetched.article)
+        repo.add_file(source, BODY_FILE, body.encode("utf-8"))
     repo.record_details(
         source,
+        kind=Kind(fetched.kind),
         title=fetched.title,
         author=fetched.author,
         published=fetched.published,
@@ -96,3 +114,15 @@ def _store(repo: SourceRepository, source: Source, fetched: FetchedSource) -> No
         rendered = transcript.render(fetched.transcript, fetched.title)
         repo.add_file(source, TRANSCRIPT_FILE, rendered.encode("utf-8"))
         repo.transition(source, Status.TRANSCRIBED)
+
+
+def _render_body(source: Source, fetched: FetchedSource, article: Article) -> str:
+    """正文.md：标题、出处信息行（公众号名、原文署名、发布日期、原文链接），然后是正文。"""
+    name = PLATFORM_NAMES.get(source.ref.platform, source.ref.platform)
+    credits = [f"{name}：{fetched.author}" if fetched.author else name]
+    if article.byline and article.byline != fetched.author:
+        credits.append(f"作者：{article.byline}")
+    if fetched.published:
+        credits.append(f"发布时间：{fetched.published[:10]}")
+    credits.append(f"[原文]({source.ref.url})")
+    return f"# {fetched.title}\n\n> {' · '.join(credits)}\n\n{article.markdown.strip()}\n"
