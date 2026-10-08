@@ -312,3 +312,23 @@ def test_same_failing_link_twice_in_one_text_is_committed_once(run, vault: Path)
     run.run("capture", f"{CANONICAL} {CANONICAL}")
 
     assert git(vault, "log", "-1", "--format=%B").startswith(f"capture: B站 {BV}\n")
+
+
+def test_capture_ends_with_a_summary_of_new_unavailable_and_failed_sources(
+    run, bilibili, initialized
+):
+    gone = "BV1Ab411c7De"
+    bilibili.videos[BV] = video(SUBTITLES)
+    bilibili.unavailable[gone] = "稿件不可见（62002）"
+
+    result = run.run(
+        "capture", f"https://example.com/x {CANONICAL} https://www.bilibili.com/video/{gone}"
+    )
+
+    summary = result.output[result.output.index("capture 汇总") :]
+    assert "新增来源 2" in summary
+    assert "已转写 1" in summary
+    assert "已失效 1" in summary
+    assert f"B站 {gone}：稿件不可见（62002）" in summary
+    assert "失败 1" in summary
+    assert "无法识别的链接：https://example.com/x" in summary

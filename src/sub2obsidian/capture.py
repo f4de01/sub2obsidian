@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterator, Mapping
+from dataclasses import replace
 from pathlib import Path
 
-from sub2obsidian import git, transcript
+from sub2obsidian import transcript
+from sub2obsidian.batch import Outcome
 from sub2obsidian.credentials import CredentialError
 from sub2obsidian.links import PLATFORM_NAMES, UnsupportedLink, extract_urls, normalize
 from sub2obsidian.platforms import (
@@ -17,7 +18,14 @@ from sub2obsidian.platforms import (
     PlatformAdapter,
     SourceUnavailable,
 )
-from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
+from sub2obsidian.sources import (
+    Kind,
+    Origin,
+    RawMaterialExists,
+    Source,
+    SourceRepository,
+    Status,
+)
 from sub2obsidian.tools import MissingTool
 
 TRANSCRIPT_FILE = "口播稿.md"
@@ -25,14 +33,6 @@ BODY_FILE = "正文.md"
 
 # 采集前（含失效存根）按平台假定的来源类型；采集后以适配器给出的类型为准
 _PLATFORM_KINDS = {"wechat": Kind.ARTICLE}
-
-
-@dataclass(frozen=True)
-class Outcome:
-    message: str
-    ok: bool
-    changed: Source | None = None  # 本次改动了的来源
-    new: bool = False  # 本次新登记了来源
 
 
 def capture_text(
@@ -48,38 +48,6 @@ def capture_text(
         yield Outcome(f"没有找到链接：{text}", ok=False)
     for url in urls:
         yield from _capture_url(url, repo, adapters)
-
-
-def changed_sources(outcomes: Iterable[Outcome]) -> list[Source]:
-    """结果中改动了的来源；同一来源（出现多次、或先采集后转写）只算一次，取最后的状态。"""
-    by_directory = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
-    return list(by_directory.values())
-
-
-def commit_changes(
-    vault: Path,
-    outcomes: list[Outcome],
-    *,
-    command: str = "capture",
-    verb: str = "采集",
-    also: Sequence[str] = (),
-) -> None:
-    """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。
-
-    also 是随之一起提交的其他文件（如待筛清单），知识库内相对路径；没有变化的不提交。
-    """
-    changed = changed_sources(outcomes)
-    if not changed:
-        return
-    lines = [label(source) for source in changed]
-    if len(lines) == 1:
-        message = f"{command}: {lines[0]}"
-    else:
-        listing = "\n".join(f"- {line}" for line in lines)
-        message = f"{command}: {verb} {len(lines)} 个来源\n\n{listing}"
-    paths = [source.directory.relative_to(vault).as_posix() for source in changed]
-    paths += [path for path in also if (vault / path).exists()]
-    git.commit_paths(vault, paths, message)
 
 
 def _capture_url(
@@ -100,12 +68,7 @@ def _capture_url(
         if created:  # 整批中止前交出新登记的来源，让它的存根随本次提交落盘
             yield Outcome(f"新来源：{source.ref.display}", ok=True, changed=source, new=True)
         raise
-    yield outcome
-
-
-def label(source: Source) -> str:
-    """「平台 平台内ID 标题」：git 提交说明与汇总中指称一个来源。"""
-    return " ".join(filter(None, [source.ref.display, source.meta["标题"]]))
+    yield replace(outcome, new=created)
 
 
 def already_registered(source: Source) -> Outcome:
@@ -136,17 +99,18 @@ def collect(source: Source, repo: SourceRepository, adapter: PlatformAdapter) ->
     ref = source.ref
     try:
         fetched = adapter.fetch(ref)
+        _store(repo, source, fetched)
     except SourceUnavailable as error:
         repo.transition(source, Status.UNAVAILABLE, reason=str(error))
         return Outcome(f"来源已失效：{ref.display}，{error}", ok=True, changed=source)
-    except (FetchFailed, CredentialError) as error:
+    except (FetchFailed, CredentialError, RawMaterialExists) as error:
+        # RawMaterialExists：上次采集中断，留下了内容不同的同名文件（只增不改，不覆盖）
         repo.record_failure(source, str(error))
         return Outcome(
             f"采集失败：{ref.display}，{error}（来源保持「{source.status}」，可重试）",
             ok=False,
             changed=source,
         )
-    _store(repo, source, fetched)
     return Outcome(f"已采集：{source.title}（{ref.display}），{source.status}", ok=True, changed=source)
 
 

@@ -8,7 +8,9 @@ from pathlib import Path
 
 import click
 
-from sub2obsidian.capture import Outcome, capture_text, commit_changes
+from sub2obsidian.batch import Outcome, commit_changes
+from sub2obsidian.batch import summarize as summarize_batch
+from sub2obsidian.capture import capture_text
 from sub2obsidian.compilation import Refused, mark_compiled, status_report
 from sub2obsidian.config import BackfillSettings, ConfigError, UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
@@ -20,15 +22,10 @@ from sub2obsidian.platforms import PlatformAdapter
 from sub2obsidian.screening import ScreenRefused, update_list
 from sub2obsidian.screening import screen as screen_sources
 from sub2obsidian.screening import summarize as summarize_screening
-from sub2obsidian.sync import summarize as summarize_sync
 from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
-from sub2obsidian.transcription import (
-    Transcriber,
-    summarize,
-    transcribe_captured,
-    transcribe_collected,
-)
+from sub2obsidian.transcription import Transcriber, transcribe_captured, transcribe_collected
+from sub2obsidian.transcription import summarize as summarize_transcription
 from sub2obsidian.vault import RAW_DIR, SCREENING_LIST, init_vault
 
 
@@ -112,11 +109,19 @@ def _run_batch(
 ) -> tuple[list[Outcome], MissingTool | None]:
     """逐条输出结果，然后把原始材料的改动单独提交一次 git。
 
-    缺少本机工具时整批中止、用户按 Ctrl+C 时中断，已完成的改动都照常提交。
+    缺少本机工具时整批中止、用户按 Ctrl+C 时中断，已完成的改动都照常提交；遇到意外错误时
+    也先提交已完成的改动，再报出错误。
     """
     done: list[Outcome] = []
     stopped: MissingTool | None = None
     interrupted = False
+
+    def commit() -> None:
+        try:
+            commit_changes(vault, done, command=command, verb=verb, also=also)
+        except GitError as error:
+            raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
+
     try:
         for outcome in outcomes:
             click.echo(outcome.message, err=not outcome.ok)
@@ -125,10 +130,10 @@ def _run_batch(
         stopped = error
     except KeyboardInterrupt:
         interrupted = True
-    try:
-        commit_changes(vault, done, command=command, verb=verb, also=also)
-    except GitError as error:
-        raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
+    except Exception:
+        commit()
+        raise
+    commit()
     if interrupted:
         raise click.ClickException(
             f"{command} 已中断：已完成的改动已提交，再次执行 {command} 会从中断处接着处理"
@@ -161,6 +166,7 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
     outcomes, stopped = _run_batch(
         vault, capture_then_transcribe(), command="capture", verb="采集", also=[SCREENING_LIST]
     )
+    click.echo(summarize_batch(outcomes, "capture"))
     if stopped is not None:
         raise click.ClickException(f"capture 中止：{stopped}")
     if not all(outcome.ok for outcome in outcomes):
@@ -182,7 +188,7 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
     )
     if stopped is not None:
         raise click.ClickException(f"转写中止：{stopped}")
-    click.echo(summarize(outcomes) if outcomes else "没有待转写的来源")
+    click.echo(summarize_transcription(outcomes) if outcomes else "没有待转写的来源")
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
 
@@ -218,7 +224,7 @@ def sync(ports: Ports, vault_path: Path | None) -> None:
         verb="同步",
         also=[SCREENING_LIST],
     )
-    click.echo(summarize_sync(outcomes))
+    click.echo(summarize_batch(outcomes, "sync"))
     if stopped is not None:
         raise click.ClickException(f"sync 中止：{stopped}")
     if not all(outcome.ok for outcome in outcomes):

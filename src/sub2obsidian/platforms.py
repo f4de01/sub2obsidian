@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from sub2obsidian.links import SourceRef
+from sub2obsidian.sources import Kind
 from sub2obsidian.transcript import Transcript
 
 
@@ -45,7 +46,7 @@ class Article:
 class FetchedSource:
     """适配器按 ID 采集到的原始内容。"""
 
-    kind: str  # 视频 / 文章 / 图文
+    kind: Kind
     title: str
     author: str | None = None  # UP主、公众号名等发布者
     byline: str | None = None  # 原文署名作者（公众号文章在公众号名之外的作者）
@@ -62,7 +63,7 @@ class Favorite:
     """拉取到的一条收藏：来源身份与筛选所需的元数据；不含任何原始材料文件。"""
 
     ref: SourceRef
-    kind: str  # 视频 / 文章 / 图文
+    kind: Kind
     title: str
     author: str | None = None
     published: str | None = None  # ISO 8601，带时区

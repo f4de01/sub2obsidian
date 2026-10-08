@@ -352,7 +352,7 @@ def test_inbox_read_failure_is_reported_and_approved_sources_are_still_collected
     bilibili.failures[BV] = "网络错误"
     inbox.push(BV_LINK)
     run.run("sync")  # 来源已登记，采集失败
-    inbox.push(f"https://www.bilibili.com/video/BV1Ab411c7De")
+    inbox.push("https://www.bilibili.com/video/BV1Ab411c7De")
     inbox.failure = "连接飞书失败：timed out"
 
     failed = run.run("sync")
@@ -417,3 +417,52 @@ def test_sync_requires_an_initialized_vault(run, inbox, vault: Path):
     assert result.exit_code != 0
     assert "请先执行 sub2obsidian init" in result.output
     assert not vault.exists()
+
+
+def test_differing_raw_file_left_by_an_interrupted_collect_fails_only_that_source(
+    run, inbox, bilibili, transcriber, initialized
+):
+    """原始材料只增不改：上次采集中断（Ctrl+C）留下了内容不同的同名文件时，只记为该来源的失败，
+    同批其他来源照常采集，改动照常提交。"""
+    vault = initialized
+    later = "BV1Xy411z7W9"  # 排在 BV 之后采集
+    offer_video(bilibili, transcriber)
+    offer_video(bilibili, transcriber, later, "另一个视频")
+    bilibili.failures[BV] = "请求过于频繁（412），请稍后再试"
+    inbox.push(BV_LINK)
+    run.run("sync")
+    (source_dir(vault, "bilibili", BV) / "封面.jpg").write_bytes(b"cover from an interrupted run")
+    inbox.push(f"https://www.bilibili.com/video/{later}")
+
+    result = run.run("sync")
+
+    assert result.exit_code != 0
+    failed = read_metadata(vault, "bilibili", BV)
+    assert failed["来源状态"] == "已通过"
+    assert "只增不改" in failed["失败原因"]
+    assert read_metadata(vault, "bilibili", later)["来源状态"] == "已转写"
+    assert git(vault, "status", "--porcelain") == ""
+
+
+def test_unexpected_error_still_commits_raw_material_changes_made_before_it(
+    run, inbox, bilibili, transcriber, initialized
+):
+    vault = initialized
+    broken = "BV1Xy411z7W9"  # 排在 BV 之后采集
+    offer_video(bilibili, transcriber)
+    fetch = bilibili.fetch
+
+    def fetch_or_crash(ref):
+        if ref.platform_id == broken:
+            raise RuntimeError("适配器的意外错误")
+        return fetch(ref)
+
+    bilibili.fetch = fetch_or_crash
+    inbox.push(BV_LINK, f"https://www.bilibili.com/video/{broken}")
+
+    with pytest.raises(RuntimeError, match="适配器的意外错误"):
+        run.run("sync")
+
+    assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已采集"
+    assert git(vault, "log", "-1", "--format=%s").startswith("sync:")
+    assert git(vault, "status", "--porcelain", "--", "原始材料") == ""

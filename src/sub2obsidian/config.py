@@ -19,6 +19,8 @@ from typing import Any
 
 import tomli_w
 
+from sub2obsidian.files import write_text_atomically
+
 APP_NAME = "sub2obsidian"
 DEFAULT_VAULT = Path("D:/Obsidian/知识库")
 
@@ -94,11 +96,8 @@ class UserConfig:
         return tomllib.loads(self.config_file.read_text(encoding="utf-8"))
 
     def write(self, settings: dict[str, Any]) -> None:
-        """整体写回 config.toml；先写临时文件再替换，避免写坏。"""
-        self.root.mkdir(parents=True, exist_ok=True)
-        temporary = self.config_file.with_suffix(".toml.tmp")
-        temporary.write_text(tomli_w.dumps(settings), encoding="utf-8", newline="\n")
-        temporary.replace(self.config_file)
+        """整体写回 config.toml。"""
+        write_text_atomically(self.config_file, tomli_w.dumps(settings))
 
     def vault(self) -> Path:
         """配置中的知识库路径；未配置时为默认路径。"""

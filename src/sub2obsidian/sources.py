@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from sub2obsidian.files import write_text_atomically
 from sub2obsidian.links import SourceRef
 from sub2obsidian.vault import RAW_DIR
 
@@ -245,9 +246,7 @@ class SourceRepository:
         self._save(source)
 
     def _save(self, source: Source) -> None:
-        source.directory.mkdir(parents=True, exist_ok=True)
         frontmatter = yaml.safe_dump(source.meta, allow_unicode=True, sort_keys=False)
-        target = source.directory / METADATA_FILE
-        temporary = target.with_suffix(".md.tmp")
-        temporary.write_text(f"---\n{frontmatter}---\n\n{source.body}", encoding="utf-8", newline="\n")
-        temporary.replace(target)
+        write_text_atomically(
+            source.directory / METADATA_FILE, f"---\n{frontmatter}---\n\n{source.body}"
+        )

@@ -16,6 +16,7 @@ from typing import Any, Protocol
 
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import CredentialError, LoginRequired
+from sub2obsidian.files import write_text_atomically
 
 Cookie = dict[str, Any]  # Playwright BrowserContext.cookies() 的单个 cookie
 
@@ -192,9 +193,6 @@ class BrowserCredentials:
 
     def _export(self, platform: str, site: LoginSite, cookies: list[Cookie]) -> Path:
         target = (self.user_config.credentials_dir / f"{platform}.cookies.txt").resolve()
-        target.parent.mkdir(parents=True, exist_ok=True)
         relevant = [cookie for cookie in cookies if _belongs_to(cookie, site.domain)]
-        temporary = target.with_suffix(".tmp")
-        temporary.write_text(_netscape(relevant), encoding="utf-8", newline="\n")
-        temporary.replace(target)
+        write_text_atomically(target, _netscape(relevant))
         return target

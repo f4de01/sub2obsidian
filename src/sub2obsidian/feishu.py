@@ -26,6 +26,7 @@ from urllib.parse import urlencode
 import tomli_w
 
 from sub2obsidian.config import UserConfig
+from sub2obsidian.files import write_text_atomically
 from sub2obsidian.inbox import InboxBatch, InboxError, InboxNotConfigured
 
 API = "https://open.feishu.cn/open-apis"
@@ -133,10 +134,7 @@ class FeishuInbox:
             },
         )
         chat_id = _data(response, "连接飞书私聊失败")["chat_id"]
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(
-            tomli_w.dumps({"open_id": open_id, "chat_id": chat_id}), encoding="utf-8", newline="\n"
-        )
+        write_text_atomically(path, tomli_w.dumps({"open_id": open_id, "chat_id": chat_id}))
         return chat_id
 
     def _items(

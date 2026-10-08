@@ -24,8 +24,9 @@ from pathlib import Path
 
 import tomli_w
 
-from sub2obsidian.capture import Outcome, label
+from sub2obsidian.batch import Outcome, label
 from sub2obsidian.credentials import CredentialError
+from sub2obsidian.files import write_text_atomically
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import AdapterError, Favorite, FavoritesAdapter, PlatformAdapter
 from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
@@ -68,7 +69,6 @@ class BackfillState:
         return cls(lists, complete)
 
     def save(self, path: Path) -> None:
-        """先写临时文件再替换，避免写坏。"""
         data: dict[str, object] = {_COMPLETE: sorted(self.complete)} if self.complete else {}
         data |= {
             platform: {
@@ -78,10 +78,7 @@ class BackfillState:
             }
             for platform, lists in self.lists.items()
         }
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix(".toml.tmp")
-        temporary.write_text(tomli_w.dumps(data), encoding="utf-8", newline="\n")
-        temporary.replace(path)
+        write_text_atomically(path, tomli_w.dumps(data))
 
 
 def pull(

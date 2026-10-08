@@ -24,6 +24,7 @@ from markdownify import MarkdownConverter
 
 from sub2obsidian.links import SourceRef, wechat_article_ref
 from sub2obsidian.platforms import Article, Asset, FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.sources import Kind
 
 PLATFORM = "wechat"
 BEIJING = dt.timezone(dt.timedelta(hours=8))
@@ -103,7 +104,7 @@ class WechatAdapter:
         assert isinstance(content, Tag)
         title = _meta(soup, "og:title") or _text(soup.find(id="activity-name")) or ref.platform_id
         return FetchedSource(
-            kind="文章",
+            kind=Kind.ARTICLE,
             title=title,
             author=_text(soup.find(id="js_name")) or _js_var(soup, "nickname"),
             byline=_meta(soup, "author"),

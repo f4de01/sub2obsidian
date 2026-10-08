@@ -13,7 +13,8 @@ from pathlib import Path
 from typing import Protocol
 
 from sub2obsidian import transcript
-from sub2obsidian.capture import TRANSCRIPT_FILE, Outcome, changed_sources
+from sub2obsidian.batch import Outcome, changed_sources
+from sub2obsidian.capture import TRANSCRIPT_FILE
 from sub2obsidian.credentials import CredentialError
 from sub2obsidian.platforms import FetchFailed, PlatformAdapter, SourceUnavailable
 from sub2obsidian.sources import Kind, RawMaterialExists, Source, SourceRepository, Status

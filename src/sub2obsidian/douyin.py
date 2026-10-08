@@ -37,6 +37,7 @@ from sub2obsidian.platforms import (
     FetchFailed,
     SourceUnavailable,
 )
+from sub2obsidian.sources import Kind
 from sub2obsidian.tools import MissingTool, require_ffmpeg
 
 PLATFORM = "douyin"
@@ -147,9 +148,9 @@ class DouyinAdapter:
         detail = self._detail(ref)
         common = _post_metadata(detail, ref)
         if images := _image_urls(detail):
-            return FetchedSource(kind="图文", article=self._article(detail, images), **common)
+            return FetchedSource(kind=Kind.POST, article=self._article(detail, images), **common)
         return FetchedSource(
-            kind="视频", duration=_duration(detail), cover=self._cover(detail), **common
+            kind=Kind.VIDEO, duration=_duration(detail), cover=self._cover(detail), **common
         )
 
     def download_audio(self, ref: SourceRef, directory: Path) -> Path:
@@ -228,7 +229,7 @@ def _favorite(post: dict[str, Any]) -> Favorite:
     deleted = (post.get("status") or {}).get("is_delete")
     return Favorite(
         ref=ref,
-        kind="图文" if images else "视频",
+        kind=Kind.POST if images else Kind.VIDEO,
         duration=None if images else _duration(post),
         unavailable="作品已删除" if deleted else None,
         **_post_metadata(post, ref),

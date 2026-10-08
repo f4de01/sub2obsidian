@@ -32,6 +32,7 @@ from sub2obsidian.platforms import (
     FetchFailed,
     SourceUnavailable,
 )
+from sub2obsidian.sources import Kind
 from sub2obsidian.tools import require_ffmpeg
 from sub2obsidian.transcript import Transcript, parse_srt
 
@@ -174,7 +175,7 @@ class BilibiliAdapter:
     def _to_source(self, info: dict[str, Any]) -> FetchedSource:
         duration = info.get("duration")
         return FetchedSource(
-            kind="视频",
+            kind=Kind.VIDEO,
             title=info.get("title") or info["id"],
             author=info.get("uploader"),
             published=_beijing_time(info.get("timestamp")),
@@ -220,7 +221,7 @@ def _listed_video(
         return None
     return Favorite(
         ref=ref,
-        kind="视频",
+        kind=Kind.VIDEO,
         title=title or ref.platform_id,
         author=author,
         published=_beijing_time(published),

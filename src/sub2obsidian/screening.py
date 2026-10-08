@@ -13,7 +13,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
-from sub2obsidian.capture import Outcome, changed_sources, label
+from sub2obsidian.batch import Outcome, changed_sources, label
+from sub2obsidian.files import write_text_atomically
 from sub2obsidian.links import PLATFORM_NAMES, SourceRef
 from sub2obsidian.sources import Source, SourceRepository, Status
 from sub2obsidian.vault import SCREENING_LIST
@@ -69,9 +70,7 @@ def update_list(vault: Path) -> bool:
     text = render(pending, previous)
     if path.exists() and path.read_text(encoding="utf-8") == text:
         return False
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(text, encoding="utf-8", newline="\n")
-    temporary.replace(path)
+    write_text_atomically(path, text)
     return True
 
 
