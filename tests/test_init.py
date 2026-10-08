@@ -217,7 +217,7 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "版本 4" in schema
+    assert "Schema 模板（版本 5）" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
     # 批注 callout 不得改动
@@ -288,3 +288,14 @@ def test_schema_tells_the_agent_how_to_run_a_full_lint(run, vault: Path):
     assert "Schema 改进建议" in lint
     assert "由用户决定" in lint
     assert "git commit" in lint
+
+
+def test_schema_keeps_sources_with_compilable_raw_material_compilable(run, vault: Path):
+    """已失效只指拿到可编译的原始材料之前平台上就没了；已拿到的照常编译。"""
+    run.run("init", str(vault))
+
+    raw = chapter((vault / "CLAUDE.md").read_text(encoding="utf-8"), "## 原始材料")
+    status = next(line for line in raw.splitlines() if line.startswith("**来源状态**"))
+    assert "已失效" in status
+    assert "拿到可编译的原始材料之前" in status
+    assert "照常编译" in status

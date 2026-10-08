@@ -206,7 +206,7 @@ sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源�
 - 「可编译」= 文章或图文「已采集」，或视频「已转写」。
 - `mark-compiled` 接受 `status` 列出的 `<平台>/<平台内ID>`，也接受来源在 `原始材料/` 中的目录或来源的链接（短链除外；B站 不带 p 的链接只指第 1 P）。只要有一个来源找不到或不可编译，就整批拒绝、一个都不改。
 - `mark-compiled` 不单独提交 git：来源状态的改动由 agent 与 Wiki 的改动一起放进本次编译的提交。
-- Schema 初始化后归知识库所有；想改进编译质量就改知识库里的 Schema，重跑 `init` 不会覆盖它。
+- Schema 初始化后归知识库所有；想改进编译质量就改知识库里的 Schema，重跑 `init` 不会覆盖它。模板出新版本时见「升级 Schema」。
 
 ## 问询、存档与全库体检
 
@@ -216,7 +216,18 @@ sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源�
 - **存档**：对某个回答说「存档」，agent 把它沉淀为 `Wiki/综述/` 下的**综述页**（跨概念的比较或总结，同样带出处，不含 Wiki 之外的补充），链接到主题域入口页与相关概念页，更新 `index.md` 与 `log.md`，以一次 git 提交（`存档: …`）结束。
 - **全库体检**：说「体检」，agent 检查全部 Wiki 页面，找出并修复矛盾、孤立页、重复概念、断链、缺失的概念页，列出待你裁决的分歧，并对 Schema 提出改进建议，以一次 git 提交（`体检: …`）结束。Schema 改进建议由你决定是否采纳；采纳的由 agent 同步改进 `CLAUDE.md` 与 `AGENTS.md` 并单独提交（`Schema: …`）。裁决分歧的方式是在分歧下写一条 `> [!我]` 批注或在「我的笔记」里写下判断，下次编译或体检时生效。
 
-用旧版 Schema 初始化的知识库不会自动获得这些流程（`init` 不覆盖已有的 Schema）：可以把本仓库的 `src/sub2obsidian/assets/schema_template.md`（`$raw_dir`、`$syntheses_dir` 等占位符即 `原始材料`、`Wiki/综述` 等目录）中的「综述页」「问询流程」「存档流程」「全库体检流程」各节合并进知识库的 `CLAUDE.md` 与 `AGENTS.md`。Schema 版本 4 起 B站 分P是独立来源、出处链接带 `p` 参数：合并「原始材料」中的「B站 分P」、「出处」表格与「筛选建议流程」中多P视频的清单格式。
+## 升级 Schema
+
+Schema 初始化后归知识库所有（`init` 不覆盖已有的 Schema），本仓库的 Schema 模板出新版本时，用旧版初始化的知识库不会自动获得新的规则与流程。升级分两步，合并由 agent 判断，CLI 不调用 LLM（ADR-0001）：
+
+```powershell
+sub2obsidian upgrade-schema                  # 或 --vault <知识库路径>
+```
+
+1. `upgrade-schema` 读 `CLAUDE.md` / `AGENTS.md` 开头说明中的版本号（「Schema 模板（版本 N）」，两份不一致时按较旧的一份；找不到版本号的按旧版处理）。比模板旧时，把当前模板渲染为待合并版本 `Schema 待合并.md` 写进知识库并单独提交，**不改动**现有的 `CLAUDE.md` 与 `AGENTS.md`；已是最新时提示无需升级，不写任何文件。可以重复执行，结果相同。
+2. 在知识库目录的 agent 会话里说「合并 Schema」。agent 按 Schema 中的「合并 Schema 流程」：从知识库的 git 历史中取出当前 Schema 所基于的模板原文，分出知识库的定制（如采纳的体检建议）与新模板的变化，保留定制、并入变化、更新版本号，删除 `Schema 待合并.md`，以一次 git 提交（`Schema: 合并模板版本 N`）结束；定制与新模板冲突、无法兼顾的地方列出来请你决定。
+
+版本 5 之前的 Schema 里还没有「合并 Schema 流程」：第 2 步对 agent 说「按 `Schema 待合并.md` 中的『合并 Schema 流程』合并 Schema」即可。
 
 ## 用户配置目录
 

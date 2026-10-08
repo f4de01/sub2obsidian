@@ -26,7 +26,15 @@ from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
 from sub2obsidian.transcription import Transcriber, transcribe_captured, transcribe_collected
 from sub2obsidian.transcription import summarize as summarize_transcription
-from sub2obsidian.vault import RAW_DIR, SCREENING_LIST, init_vault
+from sub2obsidian.vault import (
+    PENDING_SCHEMA,
+    RAW_DIR,
+    SCHEMA_VERSION,
+    SCREENING_LIST,
+    NoSchema,
+    init_vault,
+    upgrade_schema,
+)
 
 
 @dataclass
@@ -288,6 +296,39 @@ def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> 
         raise click.ClickException(f"没有改动任何来源状态：\n{error}") from error
     for source in compiled:
         click.echo(f"已编译：{source.title}（{source.ref.key}）")
+
+
+@cli.command("upgrade-schema")
+@vault_option
+def upgrade_schema_command(vault_path: Path | None) -> None:
+    """把新版 Schema 模板写成待合并版本，由 agent 按「合并 Schema」流程合并。"""
+    vault = _initialized_vault(vault_path)
+    try:
+        upgrade = upgrade_schema(vault)
+    except NoSchema as error:
+        raise click.ClickException(f"{error}，请先执行 sub2obsidian init 补齐") from error
+    except GitError as error:
+        raise click.ClickException(str(error)) from error
+    if not upgrade.pending:
+        if upgrade.current == SCHEMA_VERSION:
+            click.echo(f"知识库的 Schema 已是版本 {upgrade.current}，无需升级")
+        else:
+            click.echo(
+                f"知识库的 Schema 是版本 {upgrade.current}，比本工具的模板（版本 {SCHEMA_VERSION}）新；"
+                "没有写出任何文件。请先升级 sub2obsidian"
+            )
+        return
+    current = (
+        "没有可识别的版本号（开头说明中的「Schema 模板（版本 N）」），按旧版处理"
+        if upgrade.current is None
+        else f"是版本 {upgrade.current}"
+    )
+    click.echo(
+        f"知识库的 Schema {current}，模板已是版本 {SCHEMA_VERSION}：\n"
+        f"已写出待合并版本 {PENDING_SCHEMA} 并提交，CLAUDE.md 与 AGENTS.md 未改动。\n"
+        "在知识库目录中对 agent 说「合并 Schema」，"
+        "它会保留知识库的定制、并入新模板的变化，更新版本号后删除待合并文件并提交。"
+    )
 
 
 def real_ports(user_config: UserConfig) -> Ports:

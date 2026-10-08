@@ -1,9 +1,10 @@
-"""知识库初始化：目录骨架、索引与日志、Schema。"""
+"""知识库初始化（目录骨架、索引与日志、Schema）与 Schema 升级。"""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import re
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
@@ -11,7 +12,7 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = 5
 
 RAW_DIR = "原始材料"
 SOURCES_DIR = "Wiki/来源"
@@ -50,6 +51,7 @@ def _render(asset: str) -> str:
         attachments_dir=ATTACHMENTS_DIR,
         status_page=STATUS_PAGE,
         screening_list=SCREENING_LIST,
+        pending_schema=PENDING_SCHEMA,
     )
 
 
@@ -138,3 +140,51 @@ def init_vault(root: Path) -> InitResult:
     message = "init: 初始化知识库" if new_vault else "init: 补齐知识库缺失项"
     git.commit_paths(root, created_files, message)
     return InitResult(new_vault=new_vault, created=created_dirs + created_files)
+
+
+SCHEMA_FILES = ["CLAUDE.md", "AGENTS.md"]
+PENDING_SCHEMA = "Schema 待合并.md"  # upgrade-schema 写出、agent 合并后删除
+# Schema 开头说明中的版本标记，如「Schema 模板（版本 5）」；容忍半角括号与多余空格
+_VERSION_MARK = re.compile(r"Schema\s*模板\s*[（(]\s*版本\s*(\d+)\s*[）)]")
+
+
+@dataclass(frozen=True)
+class SchemaUpgrade:
+    current: int | None  # 知识库 Schema 的版本；没有可识别的版本标记时为 None
+    pending: bool  # 是否写出了待合并版本
+
+
+class NoSchema(RuntimeError):
+    """知识库中 CLAUDE.md 与 AGENTS.md 都不在。"""
+
+
+def _schema_version(root: Path) -> int | None:
+    """知识库 Schema 的版本：取 CLAUDE.md 与 AGENTS.md 中较旧的一份，任一份没有版本标记即为 None。
+
+    用户可能删改过开头说明，只认每份中的第一处版本标记；只剩一份时按那一份。
+    """
+    schemas = [root / name for name in SCHEMA_FILES if (root / name).is_file()]
+    if not schemas:
+        raise NoSchema(f"知识库中没有 Schema（{' 与 '.join(SCHEMA_FILES)}）")
+    versions: list[int] = []
+    for schema in schemas:
+        mark = _VERSION_MARK.search(schema.read_text(encoding="utf-8", errors="replace"))
+        if mark is None:
+            return None
+        versions.append(int(mark[1]))
+    return min(versions)
+
+
+def upgrade_schema(root: Path) -> SchemaUpgrade:
+    """知识库的 Schema 比模板旧时，把模板渲染为待合并版本写进知识库并提交；不动现有 Schema。
+
+    已是最新（或比模板还新）时不写任何文件。合并由 agent 按 Schema 中的「合并 Schema 流程」完成。
+    """
+    current = _schema_version(root)
+    if current is not None and current >= SCHEMA_VERSION:
+        return SchemaUpgrade(current=current, pending=False)
+    (root / PENDING_SCHEMA).write_bytes(_text(_render("schema_template.md")))
+    git.commit_paths(
+        root, [PENDING_SCHEMA], f"upgrade-schema: 写出待合并的 Schema 版本 {SCHEMA_VERSION}"
+    )
+    return SchemaUpgrade(current=current, pending=True)
