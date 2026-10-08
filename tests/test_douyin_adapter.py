@@ -175,13 +175,34 @@ def test_video_title_falls_back_to_first_line_of_description_without_topics():
     assert fetched.title == "RAG 是什么？"
 
 
-def test_post_without_any_text_is_titled_by_its_id():
+def test_video_without_any_text_is_titled_by_its_author_and_publish_date():
     response = sample("video")
     response["aweme_detail"]["desc"] = "#AI #大模型"
 
     fetched = adapter(ReplayClient(response)).fetch(VIDEO)
 
-    assert fetched.title == VIDEO.platform_id
+    assert fetched.title == "抖音作品（某AI博主 · 2024-09-10）"
+    assert fetched.description == "#AI #大模型"
+
+
+def test_note_without_any_text_is_titled_as_a_douyin_note():
+    response = sample("note")
+    response["aweme_detail"]["item_title"] = ""
+    response["aweme_detail"]["desc"] = ""
+
+    fetched = adapter(ReplayClient(response)).fetch(NOTE)
+
+    assert fetched.title == "抖音图文（某AI博主 · 2024-10-01）"
+
+
+def test_fallback_title_keeps_what_is_known_and_uses_the_id_when_nothing_is():
+    response = sample("video")
+    response["aweme_detail"]["desc"] = ""
+    del response["aweme_detail"]["create_time"]
+    assert adapter(ReplayClient(copy.deepcopy(response))).fetch(VIDEO).title == "抖音作品（某AI博主）"
+
+    response["aweme_detail"]["author"] = {}
+    assert adapter(ReplayClient(response)).fetch(VIDEO).title == f"抖音作品（{VIDEO.platform_id}）"
 
 
 def test_deleted_post_is_reported_unavailable_with_douyins_reason():
@@ -368,6 +389,22 @@ def test_all_favorites_page_maps_each_post_to_favorite_metadata():
     # 只取元数据：不下载封面、图片，也不请求作品详情
     assert client.downloads == [] and client.details == []
     assert client.list_requests == [("collection", None, 0, PAGE_SIZE, COOKIE)]
+
+
+def test_favorite_without_any_text_gets_the_same_fallback_title_as_capture():
+    response = listing("collection_page")
+    video, note = response["aweme_list"][:2]
+    video["desc"] = ""
+    note["desc"] = "#AI学习"
+    note["item_title"] = ""
+    client = ReplayClient(pages={("collection", None, 0): response})
+
+    page = adapter(client).favorites("collection", None)
+
+    assert [item.title for item in page.items[:2]] == [
+        "抖音作品（某AI博主 · 2024-09-10）",
+        "抖音图文（某AI博主 · 2024-10-01）",
+    ]
 
 
 def test_folder_page_is_read_from_the_cursor_and_its_last_page_has_no_next():

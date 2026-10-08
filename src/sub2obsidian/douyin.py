@@ -146,8 +146,9 @@ class DouyinAdapter:
 
     def fetch(self, ref: SourceRef) -> FetchedSource:
         detail = self._detail(ref)
-        common = _post_metadata(detail, ref)
-        if images := _image_urls(detail):
+        images = _image_urls(detail)
+        common = _post_metadata(detail, ref, note=bool(images))
+        if images:
             return FetchedSource(kind=Kind.POST, article=self._article(detail, images), **common)
         return FetchedSource(
             kind=Kind.VIDEO, duration=_duration(detail), cover=self._cover(detail), **common
@@ -232,16 +233,19 @@ def _favorite(post: dict[str, Any]) -> Favorite:
         kind=Kind.POST if images else Kind.VIDEO,
         duration=None if images else _duration(post),
         unavailable="作品已删除" if deleted else None,
-        **_post_metadata(post, ref),
+        **_post_metadata(post, ref, note=bool(images)),
     )
 
 
-def _post_metadata(detail: dict[str, Any], ref: SourceRef) -> dict[str, Any]:
-    """视频与图文共有的元数据。"""
+def _post_metadata(detail: dict[str, Any], ref: SourceRef, *, note: bool) -> dict[str, Any]:
+    """视频与图文共有的元数据；note 表示作品是图文。"""
+    author = (detail.get("author") or {}).get("nickname") or None
+    published = _published(detail.get("create_time"))
+    title = _title(detail) or _fallback_title(note, author, published, ref)
     return {
-        "title": _title(detail, ref),
-        "author": (detail.get("author") or {}).get("nickname") or None,
-        "published": _published(detail.get("create_time")),
+        "title": title,
+        "author": author,
+        "published": published,
         "description": (detail.get("desc") or "").strip(),
     }
 
@@ -256,14 +260,21 @@ def _url_list(address: Any) -> list[str]:
     return [url for url in (address or {}).get("url_list") or [] if isinstance(url, str) and url]
 
 
-def _title(detail: dict[str, Any], ref: SourceRef) -> str:
-    """作品标题（图文常有）；没有时取文案第一行去掉话题；再没有就用作品 ID。"""
+def _title(detail: dict[str, Any]) -> str | None:
+    """作品标题（图文常有）；没有时取文案第一行去掉话题；作品没有文字时为 None。"""
     if title := (detail.get("item_title") or "").strip():
         return title
     for line in (detail.get("desc") or "").splitlines():
         if text := re.sub(r"#\S+", "", line).strip():
             return text
-    return ref.platform_id
+    return None
+
+
+def _fallback_title(note: bool, author: str | None, published: str | None, ref: SourceRef) -> str:
+    """没有文字的作品的可读标题：「抖音作品（作者 · 发布日期）」，图文为「抖音图文（…）」；
+    作者与发布日期都不知道时用作品 ID。"""
+    known = [part for part in (author, published and published[:10]) if part]
+    return f"抖音{'图文' if note else '作品'}（{' · '.join(known) or ref.platform_id}）"
 
 
 def _published(create_time: Any) -> str | None:
