@@ -25,7 +25,12 @@ from sub2obsidian.screening import screen as screen_sources
 from sub2obsidian.screening import summarize as summarize_screening
 from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
-from sub2obsidian.transcription import Transcriber, transcribe_captured, transcribe_collected
+from sub2obsidian.transcription import (
+    TranscribeSettings,
+    Transcriber,
+    transcribe_captured,
+    transcribe_collected,
+)
 from sub2obsidian.transcription import summarize as summarize_transcription
 from sub2obsidian.vault import (
     PENDING_SCHEMA,
@@ -103,6 +108,10 @@ def login(ports: Ports, platform: str) -> None:
     click.echo(f"已登录 {PLATFORM_NAMES[platform]}，凭据保存在用户配置目录（不会进入知识库）")
 
 
+def _transcribe_settings(user_config: UserConfig) -> TranscribeSettings:
+    return TranscribeSettings(user_config.glossary(), user_config.hallucinations())
+
+
 def _initialized_vault(path: Path | None) -> Path:
     vault = (path or UserConfig.default().vault()).resolve()
     if not (vault / RAW_DIR).is_dir():
@@ -170,7 +179,7 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
     抖音没有平台字幕，采集到的视频当场转写；其他平台没有字幕的视频等待 transcribe。
     """
     vault = _initialized_vault(vault_path)
-    terms = UserConfig.default().glossary()
+    settings = _transcribe_settings(UserConfig.default())
 
     def capture_then_transcribe() -> Iterator[Outcome]:
         captured: list[Outcome] = []
@@ -180,7 +189,9 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
                 yield outcome
         finally:
             update_list(vault)  # 推送了待筛的来源时，它已转为已通过，离开待筛清单
-        yield from transcribe_captured(vault, captured, ports.adapters, ports.transcriber, terms)
+        yield from transcribe_captured(
+            vault, captured, ports.adapters, ports.transcriber, settings
+        )
 
     outcomes, stopped = _run_batch(
         vault, capture_then_transcribe(), command="capture", verb="采集", also=[SCREENING_LIST]
@@ -198,10 +209,10 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
 def transcribe(ports: Ports, vault_path: Path | None) -> None:
     """为所有「已采集」（没有平台字幕）的视频来源转写口播稿；适合单独批量执行。"""
     vault = _initialized_vault(vault_path)
-    terms = UserConfig.default().glossary()
+    settings = _transcribe_settings(UserConfig.default())
     outcomes, stopped = _run_batch(
         vault,
-        transcribe_collected(vault, ports.adapters, ports.transcriber, terms),
+        transcribe_collected(vault, ports.adapters, ports.transcriber, settings),
         command="transcribe",
         verb="转写",
     )
@@ -235,7 +246,7 @@ def sync(ports: Ports, vault_path: Path | None) -> None:
             ports.inbox,
             ports.adapters,
             ports.transcriber,
-            user_config.glossary(),
+            _transcribe_settings(user_config),
             user_config.state_dir,
             backfill.batch_size,
         ),

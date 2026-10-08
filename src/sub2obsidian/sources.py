@@ -105,6 +105,7 @@ FIELDS = [
     "采集途径",
     "采集时间",
     "来源状态",
+    "无口播",  # 已转写的视频没有口播（纯音乐等）时的原因；有口播为空
     "筛选建议",
     "失败原因",
 ]
@@ -131,6 +132,11 @@ class Source:
     @property
     def is_compilable(self) -> bool:
         return compilable(self.kind, self.status)
+
+    @property
+    def no_speech(self) -> str | None:
+        """已转写的视频没有口播时的原因（元数据「无口播」）；有口播或还没转写时为 None。"""
+        return self.meta.get("无口播")
 
     @property
     def title(self) -> str:
@@ -244,13 +250,23 @@ class SourceRepository:
             raise RawMaterialExists(f"原始材料只增不改，已存在：{target}")
         target.write_bytes(data)
 
-    def transition(self, source: Source, new: Status, *, reason: str | None = None) -> None:
+    def transition(
+        self,
+        source: Source,
+        new: Status,
+        *,
+        reason: str | None = None,
+        no_speech: str | None = None,
+    ) -> None:
+        """转换来源状态；reason 记为失败原因。转为「已转写」时 no_speech 是无口播的原因。"""
         if not transition_allowed(source.kind, source.status, new):
             raise IllegalTransition(
                 f"{source.ref.display}：不能从「{source.status}」转为「{new}」"
             )
         source.meta["来源状态"] = str(new)
         source.meta["失败原因"] = reason
+        if new is Status.TRANSCRIBED:
+            source.meta["无口播"] = no_speech
         self._save(source)
 
     def screen(self, source: Source, *, approved: bool, suggestion: str | None) -> None:

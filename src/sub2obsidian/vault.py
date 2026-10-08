@@ -13,7 +13,7 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 
 RAW_DIR = "原始材料"
 SOURCES_DIR = "Wiki/来源"

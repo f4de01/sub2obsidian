@@ -287,7 +287,7 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "Schema 模板（版本 5）" in schema
+    assert "Schema 模板（版本 6）" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
     # 批注 callout 不得改动
@@ -369,3 +369,31 @@ def test_schema_keeps_sources_with_compilable_raw_material_compilable(run, vault
     assert "已失效" in status
     assert "拿到可编译的原始材料之前" in status
     assert "照常编译" in status
+
+
+def test_schema_compiles_sources_without_speech_from_description_and_cover_only(run, vault: Path):
+    """无口播的视频（纯音乐、只有画面）照常编译，但只依据简介与封面，不引用口播稿（#19）。"""
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    raw = chapter(schema, "## 原始材料")
+    assert "无口播" in raw
+    rule = next(line for line in raw.splitlines() if line.startswith("**无口播**"))
+    assert "简介" in rule and "封面" in rule
+    assert "不引用口播稿" in rule
+    assert "时间戳" in rule
+    assert "无口播" in chapter(schema, "## 编译流程")
+
+
+def test_schema_treats_dubbed_or_subtitled_parts_of_one_video_as_variants(run, vault: Path):
+    """同一视频中只是配音或字幕不同的分P（如 P1 中英字幕、P2 中配中字）是同内容版本，只算一份证据。"""
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    variants = chapter(schema, "## 同内容版本")
+    assert "分P" in variants
+    assert "配音" in variants and "字幕" in variants
+    assert "只算一份证据" in variants
+    raw = chapter(schema, "## 原始材料")
+    part_rule = next(line for line in raw.splitlines() if line.startswith("**B站 分P**"))
+    assert "同内容版本" in part_rule

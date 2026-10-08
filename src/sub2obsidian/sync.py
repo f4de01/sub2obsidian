@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -26,7 +26,7 @@ from sub2obsidian.links import UnsupportedLink, extract_urls
 from sub2obsidian.platforms import AdapterError, FetchFailed, PlatformAdapter
 from sub2obsidian.screening import update_list
 from sub2obsidian.sources import SourceRepository, Status
-from sub2obsidian.transcription import Transcriber, transcribe_collected
+from sub2obsidian.transcription import TranscribeSettings, Transcriber, transcribe_collected
 
 INBOX_STATE_FILE = "inbox.toml"
 
@@ -55,7 +55,7 @@ def sync(
     inbox: Inbox,
     adapters: Mapping[str, PlatformAdapter],
     transcriber: Transcriber,
-    terms: Sequence[str],
+    settings: TranscribeSettings,
     state_dir: Path,
     batch_size: int,
 ) -> Iterator[Outcome]:
@@ -72,7 +72,7 @@ def sync(
         update_list(vault)
     for source in repo.in_status(Status.APPROVED):
         yield collect(source, repo, adapters[source.ref.platform])
-    yield from transcribe_collected(vault, adapters, transcriber, terms)
+    yield from transcribe_collected(vault, adapters, transcriber, settings)
 
 
 def _read_inbox(

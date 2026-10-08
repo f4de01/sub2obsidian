@@ -174,6 +174,8 @@ sub2obsidian transcribe --vault "E:\笔记\知识库"
 - 平台字幕优先：有字幕的视频在 `capture` 时已经是「已转写」，不会再送去转写；没有字幕的停在「已采集」，由 `transcribe` 批量处理（可以放到夜里单独跑）。
 - 每条来源：下载音频到系统临时目录 → 在本机 GPU 上用 faster-whisper `large-v3-turbo`（CUDA，int8_float16）转写 → 写入与平台字幕相同格式的 `口播稿.md`（`口播稿来源: faster-whisper large-v3-turbo`）→ 状态转为「已转写」→ 删除临时音频。原始材料里不保存任何音视频文件。
 - 口播稿原样保存，不做自动纠错。只含音乐、没有人声的片段会被跳过（语音活动检测），避免转写出幻觉文字。
+- 先检测音频的语言再转写；「简体中文与标点」的风格提示只给中文音频，英文等其他语言的音频不会被带成中文。重复度异常（循环重复同一个词）的段落会被丢弃。
+- Whisper 在没有人声的音频上常吐出「请不吝点赞 订阅 转发 打赏支持明镜与点点栏目」「字幕志愿者 杨茜茜」「Thank you」之类的**已知幻觉句**，这些句子从口播稿中滤掉。滤掉后什么都不剩的视频（纯音乐、只有画面）照常转为「已转写」，但元数据的「无口播」写明原因，编译时 agent 只依据简介与封面，不引用口播稿。
 - 单条失败（网络、风控、音频损坏）不影响同批其他来源：失败的来源保持「已采集」并在元数据中记下失败原因，下次 `transcribe` 自动重试。视频已删除时来源转为「已失效」（还没有口播稿，不能编译），已采集的原始材料保留。
 - 缺少 ffmpeg、显卡运行库出错或模型下载失败属于本机环境问题：整批中止并给出明确提示，未处理的来源保持原状。
 - 对原始材料的改动单独提交一次 git（`transcribe: …`）。
@@ -190,6 +192,15 @@ sub2obsidian transcribe
 ```toml
 [transcribe]
 terms = ["MCP", "RAG", "检索增强生成", "Claude Code"]
+```
+
+英文等非中文音频只用术语表中不含汉字的术语。
+
+**已知幻觉句**：内置的黑名单之外，遇到新的幻觉句可以追加（比较时忽略空白、标点与大小写；一段只由这些句子组成时整段滤掉，句子中间提到的不受影响）：
+
+```toml
+[transcribe]
+hallucinations = ["本视频由某某赞助播出"]
 ```
 
 ## 编译
@@ -233,7 +244,7 @@ sub2obsidian upgrade-schema                  # 或 --vault <知识库路径>
 
 | 位置 | 内容 |
 | --- | --- |
-| `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表；`[backfill]` 表的 `batch_size`、`interval` 与 `douyin_interval`：回填的批量大小与 B站、抖音的请求间隔 |
+| `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表，`hallucinations`：追加的已知幻觉句；`[backfill]` 表的 `batch_size`、`interval` 与 `douyin_interval`：回填的批量大小与 B站、抖音的请求间隔 |
 | `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`、`douyin.cookies.txt`（登录时导出；B站 每次运行时从浏览器配置重新导出一次，抖音每次运行时从浏览器配置读出一次 cookie 字符串，同一次运行内复用）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
 | `browser/<平台>/` | 登录用的 Playwright 持久化浏览器配置 |
 | `state/` | 运行状态：`inbox.toml`（收件箱读到的位置、待重试的链接）、`backfill.toml`（每个收藏夹回填到哪一页、哪些平台已回填完成）、`feishu.toml`（与机器人私聊的会话 ID）等 |

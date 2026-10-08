@@ -3,11 +3,19 @@
 首次运行时自动从 Hugging Face 下载模型（约 1.6 GB）到其缓存目录；下载不了时可设置
 HF_ENDPOINT=https://hf-mirror.com 后重试。Windows 上 CUDA 所需的 cuBLAS 由 nvidia-cublas-cu12
 包提供（cuDNN 随 ctranslate2 自带），这里把它的 DLL 目录加进 PATH。
+
+抑制幻觉与漂移：
+- 先检测一次语言再显式传给引擎；中文风格提示只给中文音频——把它给英文音频时，难解码的段落
+  会在温度回退中被带成乱码中文并陷入「练习练习……」式的重复。非中文音频也不带含汉字的术语。
+- 语音活动检测跳过没有人声的片段；hallucination_silence_threshold 跳过长静默中的幻觉。
+- 丢弃压缩比超过阈值（重复度异常）的段落。不用 no_repeat_ngram_size：它会把正常重复的说法
+  （如「implement ticket two / three」）也改掉。
 """
 
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -21,8 +29,17 @@ MODEL = "large-v3-turbo"
 DEVICE = "cuda"
 COMPUTE_TYPE = "int8_float16"
 
-# 每个 30 秒窗口都带上的提示：引导简体中文与标点，并列出术语表
+# 中文音频每个 30 秒窗口都带上的提示：引导简体中文与标点，并列出术语表
 STYLE_HINT = "以下是普通话的句子，使用简体中文和标点。"
+CHINESE = "zh"
+_HAN = re.compile(r"[一-鿿]")  # 汉字
+
+# 语言检测取有人声的前几个 30 秒窗口（视频开头常是音乐）
+LANGUAGE_DETECTION_SEGMENTS = 3
+# 压缩比（文本长度 / zlib 压缩后长度）超过它的段落多是重复循环：引擎先以更高温度重试，仍超过就丢弃
+COMPRESSION_RATIO_THRESHOLD = 2.4
+# 长于它（秒）的静默中出现的可疑段落视为幻觉，跳过
+HALLUCINATION_SILENCE_THRESHOLD = 2.0
 
 # 这些 GPU 运行库错误说明本机环境有问题，而不是某段音频有问题
 _GPU_ERRORS = ("cuda", "cublas", "cudnn")
@@ -46,10 +63,12 @@ def _register_cuda_libraries() -> None:
             os.environ["PATH"] = path = f"{library}{os.pathsep}{path}"
 
 
-def hint(terms: Sequence[str]) -> str:
-    if not terms:
-        return STYLE_HINT
-    return f"{STYLE_HINT}术语：{'、'.join(terms)}。"
+def hint(language: str, terms: Sequence[str]) -> str | None:
+    """给引擎的提示：中文音频是风格提示加术语表；其他语言只列不含汉字的术语，没有就不提示。"""
+    if language == CHINESE:
+        return f"{STYLE_HINT}术语：{'、'.join(terms)}。" if terms else STYLE_HINT
+    foreign = [term for term in terms if not _HAN.search(term)]
+    return ", ".join(foreign) or None
 
 
 def model_cached(model: str = MODEL, cache_dir: Path | None = None) -> bool:
@@ -107,18 +126,28 @@ class FasterWhisperTranscriber:
     def transcribe(self, audio: Path, terms: Sequence[str]) -> list[Segment]:
         model = self._load()
         try:
+            from faster_whisper.audio import decode_audio
+
+            samples = decode_audio(str(audio))
+            language, _, _ = model.detect_language(
+                samples, vad_filter=True, language_detection_segments=LANGUAGE_DETECTION_SEGMENTS
+            )
             segments, _ = model.transcribe(
-                str(audio),
-                hotwords=hint(terms),
+                samples,
+                language=language,
+                hotwords=hint(language, terms),
                 # 不以上一窗口的文字为提示：长音频上可避免整段重复的幻觉
                 condition_on_previous_text=False,
                 vad_filter=True,
+                compression_ratio_threshold=COMPRESSION_RATIO_THRESHOLD,
+                word_timestamps=True,  # hallucination_silence_threshold 需要逐词时间戳
+                hallucination_silence_threshold=HALLUCINATION_SILENCE_THRESHOLD,
             )
             # segments 是惰性生成器：解码与推理在遍历时才真正发生
             return [
                 Segment(start=s.start, end=s.end, text=s.text.strip())
                 for s in segments
-                if s.text.strip()
+                if s.text.strip() and s.compression_ratio <= COMPRESSION_RATIO_THRESHOLD
             ]
         except Exception as error:  # noqa: BLE001 - 单条音频的任何失败都不应拖垮整批
             message = str(error) or type(error).__name__

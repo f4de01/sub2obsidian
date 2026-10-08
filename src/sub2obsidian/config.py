@@ -2,7 +2,8 @@ r"""用户配置目录 %APPDATA%\sub2obsidian\ 的读写约定。
 
 目录布局（后续工单按此存放，全部只在本机、绝不进入知识库或任何 git 仓库）：
 
-    config.toml        用户设置，UTF-8 编码的 TOML：vault（知识库路径）、[transcribe]（术语表）、
+    config.toml        用户设置，UTF-8 编码的 TOML：vault（知识库路径）、[transcribe]（术语表、
+                       追加的已知幻觉句）、
                        [backfill]（回填的批量大小与请求间隔）
     credentials/       平台与飞书应用凭据（cookies.txt、cookie 字符串、App Secret 等）
     browser/<平台>/    凭据提供者使用的 Playwright 持久化浏览器配置
@@ -108,12 +109,20 @@ class UserConfig:
         configured = self.read().get("vault")
         return Path(configured) if configured else DEFAULT_VAULT
 
+    def _transcribe_list(self, key: str) -> list[str]:
+        """[transcribe] 表中的一个字符串列表；只写了一个字符串时也能用，未配置时为空。"""
+        values = self.read().get("transcribe", {}).get(key, [])
+        if isinstance(values, str):
+            values = [values]
+        return [str(value).strip() for value in values if str(value).strip()]
+
     def glossary(self) -> list[str]:
-        """转写术语表：[transcribe] 表的 terms，作为提示传给转写引擎；未配置时为空。"""
-        terms = self.read().get("transcribe", {}).get("terms", [])
-        if isinstance(terms, str):  # 只写了一个术语时也能用
-            terms = [terms]
-        return [str(term).strip() for term in terms if str(term).strip()]
+        """转写术语表：[transcribe] 表的 terms，作为提示传给转写引擎。"""
+        return self._transcribe_list("terms")
+
+    def hallucinations(self) -> list[str]:
+        """追加的已知幻觉句：[transcribe] 表的 hallucinations，与内置的一起从 ASR 输出中滤掉。"""
+        return self._transcribe_list("hallucinations")
 
     def backfill(self) -> BackfillSettings:
         """[backfill] 表：batch_size（正整数），interval 与 douyin_interval（[最短, 最长] 秒，

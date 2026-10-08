@@ -154,6 +154,13 @@ def test_ai_subtitles_are_used_when_no_cc_subtitles(cookies):
     assert [s.text for s in fetched.transcript.segments] == ["（AI）大家好", "（AI）今天聊聊这首歌"]
 
 
+def test_empty_ai_subtitles_are_skipped_so_the_video_goes_to_asr(cookies):
+    """没有人声的视频，B站 也列出 ai-zh，但字幕是空的：不是平台字幕，留待 ASR（#19 第 3 点）。"""
+    fetched = adapter(cookies, ReplayClient(info="ytdlp_info_empty_ai_subtitles.json")).fetch(REF)
+
+    assert fetched.transcript is None
+
+
 def test_deleted_or_invisible_video_is_reported_unavailable(cookies):
     client = ReplayClient(info_error="ytdlp_error_unavailable.txt", view="view_unavailable.json")
 

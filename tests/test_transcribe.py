@@ -339,3 +339,124 @@ def test_existing_different_transcript_fails_only_that_source(
     assert meta["来源状态"] == "已采集"
     assert "只增不改" in meta["失败原因"]
     assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已转写"
+
+
+# ---- 无口播与已知幻觉句（#19） ----
+
+HALLUCINATION = "请不吝点赞 订阅 转发 打赏支持明镜与点点栏目"
+
+
+def test_video_whose_asr_output_is_only_known_hallucinations_is_marked_without_speech(
+    run, bilibili, transcriber, initialized
+):
+    """纯音乐视频：Whisper 只吐出已知幻觉句。滤掉后口播稿为空，标记无口播，仍可编译。"""
+    vault = initialized
+    capture_without_subtitles(run, bilibili, transcriber)
+    transcriber.segments[f"audio:{BV}"] = [Segment(0.7, 4.0, HALLUCINATION)]
+
+    result = run.run("transcribe")
+
+    assert result.exit_code == 0, result.output
+    meta = read_metadata(vault, "bilibili", BV)
+    assert meta["来源状态"] == "已转写"
+    assert "已知幻觉句" in meta["无口播"]
+    assert HALLUCINATION in meta["无口播"]
+    transcript = (source_dir(vault, "bilibili", BV) / "口播稿.md").read_text(encoding="utf-8")
+    assert transcript == f"---\n口播稿来源: 假转写引擎 v1\n---\n# 口播稿：{TITLE}\n\n"
+    assert f"已转写（无口播）：{TITLE}" in result.output
+    assert "转写 1 个来源：已转写 1（无口播 1）" in result.output
+    assert f"bilibili/{BV}" in run.run("status").output
+
+
+def test_known_hallucinations_are_filtered_out_of_a_transcript_with_speech(
+    run, bilibili, transcriber, initialized
+):
+    vault = initialized
+    capture_without_subtitles(run, bilibili, transcriber)
+    transcriber.segments[f"audio:{BV}"] = [
+        Segment(0.0, 2.6, "大家好，今天聊 RAG"),
+        Segment(2.6, 5.0, "字幕志愿者 杨茜茜"),
+        Segment(5.0, 8.0, "也就是检索增强生成"),
+        Segment(600.0, 602.0, " Thank you. Thank you! "),
+    ]
+
+    result = run.run("transcribe")
+
+    assert result.exit_code == 0, result.output
+    meta = read_metadata(vault, "bilibili", BV)
+    assert meta["来源状态"] == "已转写"
+    assert meta["无口播"] is None
+    transcript = (source_dir(vault, "bilibili", BV) / "口播稿.md").read_text(encoding="utf-8")
+    assert transcript.endswith(
+        "\n[00:00:00] 大家好，今天聊 RAG\n[00:00:05] 也就是检索增强生成\n"
+    )
+
+
+def test_a_sentence_merely_containing_a_known_hallucination_is_kept(
+    run, bilibili, transcriber, initialized
+):
+    vault = initialized
+    capture_without_subtitles(run, bilibili, transcriber)
+    transcriber.segments[f"audio:{BV}"] = [Segment(0.0, 3.0, "Thank you for joining, today we talk about RAG.")]
+
+    run.run("transcribe")
+
+    transcript = (source_dir(vault, "bilibili", BV) / "口播稿.md").read_text(encoding="utf-8")
+    assert "[00:00:00] Thank you for joining, today we talk about RAG." in transcript
+    assert read_metadata(vault, "bilibili", BV)["无口播"] is None
+
+
+def test_video_with_no_asr_output_at_all_is_marked_without_speech(
+    run, bilibili, transcriber, initialized
+):
+    vault = initialized
+    capture_without_subtitles(run, bilibili, transcriber)
+    transcriber.segments[f"audio:{BV}"] = []
+
+    result = run.run("transcribe")
+
+    assert result.exit_code == 0, result.output
+    meta = read_metadata(vault, "bilibili", BV)
+    assert meta["来源状态"] == "已转写"
+    assert "没有识别出任何口播" in meta["无口播"]
+
+
+def test_hallucinations_from_user_config_are_filtered_too(
+    run, bilibili, transcriber, initialized, user_config_dir: Path
+):
+    vault = initialized
+    config = user_config_dir / "config.toml"
+    config.write_text(
+        config.read_text(encoding="utf-8")
+        + '\n[transcribe]\nhallucinations = ["本视频由某某赞助播出"]\n',
+        encoding="utf-8",
+    )
+    capture_without_subtitles(run, bilibili, transcriber)
+    transcriber.segments[f"audio:{BV}"] = [
+        Segment(0.0, 3.0, "本视频由某某赞助播出。"),
+        Segment(3.0, 5.0, "请不吝点赞 订阅 转发 打赏支持明镜与点点栏目"),
+    ]
+
+    result = run.run("transcribe")
+
+    assert result.exit_code == 0, result.output
+    without_speech = read_metadata(vault, "bilibili", BV)["无口播"]
+    assert "本视频由某某赞助播出" in without_speech
+    assert HALLUCINATION in without_speech
+
+
+def test_douyin_video_captured_without_speech_is_marked_too(
+    run, douyin, transcriber, initialized
+):
+    """抖音视频采集后当场转写，走同一套幻觉过滤与无口播标记。"""
+    vault = initialized
+    run.credentials.login("douyin")
+    douyin.posts["7300000000000000001"] = video()
+    transcriber.segments["audio:7300000000000000001"] = [Segment(0.0, 2.0, "谢谢观看")]
+
+    result = run.run("capture", "https://www.douyin.com/video/7300000000000000001")
+
+    assert result.exit_code == 0, result.output
+    meta = read_metadata(vault, "douyin", "7300000000000000001")
+    assert meta["来源状态"] == "已转写"
+    assert "谢谢观看" in meta["无口播"]
