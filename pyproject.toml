@@ -9,6 +9,7 @@ dependencies = [
     "beautifulsoup4>=4.15.0",
     "click>=8.1",
     "faster-whisper>=1.2.1",
+    "lark-oapi>=1.7.3,<2",  # feishu-connect 用到 ws.Client 的 _conn 与模块级 loop
     "markdownify>=1.2.3",
     "nvidia-cublas-cu12>=12.9.2.10 ; sys_platform == 'win32'",
     "playwright>=1.63.0",

@@ -1,11 +1,11 @@
 """行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。
 
-四个外部端口（平台适配器、收件箱、转写引擎、凭据提供者）在这里都有假实现。
+五个外部端口（平台适配器、收件箱、飞书事件长连接、转写引擎、凭据提供者）在这里都有假实现。
 """
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -15,6 +15,7 @@ from click.testing import CliRunner, Result
 from sub2obsidian.cli import Ports, cli
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LoginRequired
+from sub2obsidian.feishu_events import EventConnectionFailed
 from sub2obsidian.inbox import InboxBatch, InboxError, InboxNotConfigured
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import (
@@ -267,6 +268,42 @@ class FakeInbox:
 
 
 @dataclass
+class FakeFeishuEvents:
+    """替换飞书事件长连接：不连网络，保持期间按预置情形收到消息事件、被 Ctrl+C 或断开。"""
+
+    failure: str | None = None  # 连不上的原因
+    interrupted_while_connecting: bool = False  # 还没连上用户就按了 Ctrl+C
+    messages: int = 0  # 保持期间收到的「接收消息」事件数
+    interrupted: bool = False  # 保持期间用户按了 Ctrl+C
+    lost: str | None = None  # 保持期间长连接断开的原因
+    connections: list[tuple[str, str]] = field(default_factory=list)  # (App ID, App Secret)
+    waits: list[float] = field(default_factory=list)  # 每次保持的秒数
+    closed: bool = False
+    _on_message: Callable[[], None] | None = None
+
+    def connect(self, app_id: str, app_secret: str, on_message: Callable[[], None]) -> None:
+        self.connections.append((app_id, app_secret))
+        if self.interrupted_while_connecting:
+            raise KeyboardInterrupt
+        if self.failure is not None:
+            raise EventConnectionFailed(self.failure)
+        self._on_message = on_message
+
+    def wait(self, seconds: float) -> None:
+        assert self._on_message is not None, "还没连上就开始保持"
+        self.waits.append(seconds)
+        for _ in range(self.messages):
+            self._on_message()
+        if self.lost is not None:
+            raise EventConnectionFailed(self.lost)
+        if self.interrupted:
+            raise KeyboardInterrupt
+
+    def close(self) -> None:
+        self.closed = True
+
+
+@dataclass
 class Cli:
     launcher: FakeLauncher
     credentials: FakeCredentials
@@ -275,6 +312,7 @@ class Cli:
     douyin: FakeDouyin
     transcriber: FakeTranscriber
     inbox: FakeInbox
+    feishu_events: FakeFeishuEvents
 
     def run(self, *args: str) -> Result:
         ports = Ports(
@@ -288,6 +326,7 @@ class Cli:
             },
             transcriber=self.transcriber,
             inbox=self.inbox,
+            feishu_events=self.feishu_events,
         )
         return CliRunner().invoke(cli, list(args), obj=ports, catch_exceptions=False)
 
@@ -337,6 +376,11 @@ def inbox() -> FakeInbox:
 
 
 @pytest.fixture
+def feishu_events() -> FakeFeishuEvents:
+    return FakeFeishuEvents()
+
+
+@pytest.fixture
 def run(
     launcher: FakeLauncher,
     credentials: FakeCredentials,
@@ -345,6 +389,7 @@ def run(
     douyin: FakeDouyin,
     transcriber: FakeTranscriber,
     inbox: FakeInbox,
+    feishu_events: FakeFeishuEvents,
 ) -> Cli:
     return Cli(
         launcher=launcher,
@@ -354,6 +399,7 @@ def run(
         douyin=douyin,
         transcriber=transcriber,
         inbox=inbox,
+        feishu_events=feishu_events,
     )
 
 

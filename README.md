@@ -114,9 +114,21 @@ sub2obsidian capture "7.94 复制打开抖音，看看【某某的作品】… h
 bash scripts/feishu-inbox-setup.sh
 ```
 
-向导覆盖：创建企业自建应用 → 复制 App ID 与 App Secret → 开启机器人能力 → 开通权限 `im:message`（获取与发送单聊、群组消息）→ 发布版本（可用范围包含你自己）→ 在 API 调试台取得你在该应用下的 open_id。三个值写入 `%APPDATA%\sub2obsidian\credentials\feishu.env`，绝不进入知识库或 git 仓库。可以重复运行，回车保留已保存的值。
+向导覆盖：创建企业自建应用 → 复制 App ID 与 App Secret → 开启机器人能力 → 开通权限 `im:message`（获取与发送单聊、群组消息）→ 订阅「接收消息」事件（见下）→ 发布版本（可用范围包含你自己）→ 在 API 调试台取得你在该应用下的 open_id。三个值写入 `%APPDATA%\sub2obsidian\credentials\feishu.env`，绝不进入知识库或 git 仓库。可以重复运行，回车保留已保存的值。
 
-不需要事件订阅、公网回调或常驻进程：`sync` 时通过消息列表 API 主动拉取私聊里的新消息。首次 `sync` 时机器人会给你发一条「收件箱已连接」，从而确定私聊会话；之后就把链接发到这个私聊。
+**订阅「接收消息」事件**：机器人必须订阅事件 `im.message.receive_v1`（接收消息 v2.0），你才能给它发消息；没订阅时手机飞书的私聊输入框显示「暂时无法给该机器人发消息」。开发者后台保存「使用长连接接收事件」这一订阅方式时，要求当时有客户端连着长连接，所以这一步要先在另一个终端运行：
+
+```powershell
+sub2obsidian feishu-connect              # 缺省保持 10 分钟；--minutes 30 保持 30 分钟
+```
+
+它读取 `feishu.env` 中的 App ID 与 App Secret 连上飞书长连接，在终端里列出要在后台做的事，按 Ctrl+C 或到时自动结束；连着的时候你给机器人发消息，终端会提示收到。连上之后在开发者后台：
+
+1. 「事件与回调」（Events & Callbacks）→「事件配置」（Event configuration）→「订阅方式」（Subscription mode）选「使用长连接接收事件」（Receive events through persistent connection），保存；
+2. 「添加事件」（Add events），添加 `im.message.receive_v1`（接收消息 v2.0 / Message received v2.0）；
+3. 创建并发布新版本（权限、事件订阅、可用范围的改动都要发布新版本才生效），然后结束 `feishu-connect`。
+
+只有配置时需要长连接：日常不需要公网回调或常驻进程，`sync` 时通过消息列表 API 主动拉取私聊里的新消息。首次 `sync` 时机器人会给你发一条「收件箱已连接」，从而确定私聊会话；之后就把链接发到这个私聊。
 
 ### `sync`
 
@@ -274,7 +286,7 @@ uv sync
 uv run pytest
 ```
 
-测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、转写引擎、凭据提供者四个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，抖音适配器用按 F2 返回结构构造的样本（`tests/fixtures/douyin/`，测试不需要安装 F2），飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
+测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、飞书事件长连接、转写引擎、凭据提供者五个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，抖音适配器用按 F2 返回结构构造的样本（`tests/fixtures/douyin/`，测试不需要安装 F2），飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
 
 faster-whisper 的集成测试（`tests/test_faster_whisper.py`，测试音频为 Windows 语音合成的一段中文）只在本机有 CUDA 显卡、且 `large-v3-turbo` 模型已缓存时运行，否则自动跳过；测试从不下载模型。要运行它，先执行一次 `sub2obsidian transcribe`（或 `uv run python -c "from faster_whisper.utils import download_model; download_model('large-v3-turbo')"`）把模型下载好。
 

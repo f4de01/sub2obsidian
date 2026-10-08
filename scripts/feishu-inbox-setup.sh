@@ -185,14 +185,15 @@ finish() {
 # ──────────────────────────────────────────────────────────────────────────
 
 #
-# 飞书收件箱配置向导（#7）：创建飞书自建应用、开启机器人、开通消息权限、发布，
+# 飞书收件箱配置向导（#7、#21）：创建飞书自建应用、开启机器人、开通消息权限、
+# 订阅「接收消息」事件、发布，
 # 然后把 App ID、App Secret 与你的 open_id 写入用户配置目录：
 #   %APPDATA%\sub2obsidian\credentials\feishu.env
 # 凭据只存放在这里，绝不进入知识库或任何 git 仓库。可重复运行：回车保留已保存的值。
 #
 # 用法（Git Bash，在本仓库根目录）：bash scripts/feishu-inbox-setup.sh
 
-TOTAL_STAGES=7
+TOTAL_STAGES=8
 
 CONFIG_DIR="${APPDATA:?找不到 APPDATA 环境变量：请在 Windows 的 Git Bash 中运行}/sub2obsidian"
 if command -v cygpath >/dev/null 2>&1; then CONFIG_DIR="$(cygpath -u "$CONFIG_DIR")"; fi
@@ -238,19 +239,33 @@ stage "开通消息权限"
 step "打开左侧「权限管理」，在搜索框输入 im:message。"
 step "开通「获取与发送单聊、群组消息」（im:message）。"
 note "读取与机器人私聊的消息要用它；首次 sync 时机器人给你发一条「收件箱已连接」也要用它。"
-note "不需要开通事件订阅或回调地址：sync 时主动拉取消息。"
 pause "开通好后按回车继续"
 
 # ── 5 ────────────────────────────────────────────────────────────────────
-stage "发布应用"
-step "打开左侧「版本管理与发布」，点击「创建版本」。"
-step "版本号填 1.0.0；「可用范围」务必包含你自己。"
-step "保存后点击「申请线上发布」。"
-note "需要审核时，由飞书组织的管理员通过；你自己是管理员就自己通过。"
-note "权限或可用范围以后有改动，都要再创建一个版本并发布才生效。"
-pause "应用显示为「已发布」后按回车继续"
+stage "订阅「接收消息」事件"
+say "机器人订阅了「接收消息」事件，你才能给它发消息；否则私聊输入框会显示"
+say "「暂时无法给该机器人发消息」。sync 照常主动拉取消息，不需要常驻进程。"
+say "后台保存「长连接」订阅方式时，要求当时有客户端连着长连接，所以先连上："
+step "另开一个终端，运行：sub2obsidian feishu-connect"
+note "还没安装 sub2obsidian、或提示没有这个命令（安装的版本较旧）时，在本仓库根目录运行：uv run sub2obsidian feishu-connect"
+note "它读取上面保存的 App ID 与 App Secret，显示「已连上」后保持 10 分钟；下一步发布版本之后再按 Ctrl+C 结束。"
+step "回到开发者后台，打开左侧「事件与回调」（Events & Callbacks）→「事件配置」（Event configuration）。"
+step "「订阅方式」（Subscription mode）选「使用长连接接收事件」（Receive events through persistent connection），点击「保存」。"
+note "保存失败、提示没有连接时，检查另一个终端是否显示「已连上」，必要时重新运行 feishu-connect。"
+step "点击「添加事件」（Add events），搜索 im.message.receive_v1，勾选「接收消息 v2.0」（Message received v2.0），确认添加。"
+pause "事件添加好后按回车继续（feishu-connect 先别结束）"
 
 # ── 6 ────────────────────────────────────────────────────────────────────
+stage "发布应用"
+step "打开左侧「版本管理与发布」，点击「创建版本」。"
+step "版本号填 1.0.0（以前发布过就填更高的版本号，如 1.0.1）；「可用范围」务必包含你自己。"
+step "保存后点击「申请线上发布」。"
+note "需要审核时，由飞书组织的管理员通过；你自己是管理员就自己通过。"
+note "权限、事件订阅或可用范围以后有改动，都要再创建一个版本并发布才生效。"
+note "发布后就可以在另一个终端按 Ctrl+C 结束 feishu-connect。"
+pause "应用显示为「已发布」后按回车继续"
+
+# ── 7 ────────────────────────────────────────────────────────────────────
 stage "获取你的 open_id"
 say "机器人要知道私聊的对象是你。open_id 因应用而异，所以要在这个应用下取。"
 open_url "https://open.feishu.cn/api-explorer"
@@ -265,7 +280,7 @@ while [[ ! "$FEISHU_OPEN_ID" =~ ^ou_ ]]; do
 done
 write_env FEISHU_OPEN_ID "$FEISHU_OPEN_ID"
 
-# ── 7 ────────────────────────────────────────────────────────────────────
+# ── 8 ────────────────────────────────────────────────────────────────────
 stage "连接收件箱"
 say "首次运行 sub2obsidian sync 时，机器人会在飞书里给你发一条「收件箱已连接」，"
 say "这个私聊就是收件箱。之后在手机上把 B站、公众号等的分享链接发到这里，"

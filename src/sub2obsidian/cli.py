@@ -14,8 +14,10 @@ from sub2obsidian.capture import capture_text
 from sub2obsidian.compilation import Refused, mark_compiled, status_report
 from sub2obsidian.config import BackfillSettings, ConfigError, UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
+from sub2obsidian.feishu import read_credentials
+from sub2obsidian.feishu_events import EventConnectionFailed, FeishuEvents
 from sub2obsidian.git import GitError
-from sub2obsidian.inbox import Inbox
+from sub2obsidian.inbox import Inbox, InboxNotConfigured
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.obsidian_registry import registered_in_obsidian
@@ -56,6 +58,7 @@ class Ports:
     adapters: Mapping[str, PlatformAdapter]  # 平台 → 平台适配器
     transcriber: Transcriber
     inbox: Inbox
+    feishu_events: FeishuEvents  # 只在配置飞书事件订阅时用
 
 
 @click.group()
@@ -384,12 +387,60 @@ def graph_preset_command(vault_path: Path | None) -> None:
     )
 
 
+@cli.command("feishu-connect")
+@click.option(
+    "--minutes",
+    type=click.IntRange(min=1),
+    default=10,
+    show_default=True,
+    help="最多保持多少分钟。",
+)
+@click.pass_obj
+def feishu_connect(ports: Ports, minutes: int) -> None:
+    """配置飞书事件订阅时临时保持长连接：开发者后台保存「使用长连接接收事件」时，
+    要求当时有客户端连着。
+
+    凭据取自 feishu.env；按 Ctrl+C 或到时自动结束。日常 sync 不需要它。
+    """
+    try:
+        app_id, app_secret = read_credentials(
+            UserConfig.default(), "FEISHU_APP_ID", "FEISHU_APP_SECRET"
+        )
+    except InboxNotConfigured as error:
+        raise click.ClickException(str(error)) from error
+    events = ports.feishu_events
+    click.echo(f"正在用应用 {app_id} 连接飞书长连接…")
+    try:
+        events.connect(
+            app_id,
+            app_secret,
+            lambda: click.echo("收到一条发给机器人的消息：「接收消息」事件已送达"),
+        )
+        click.echo(
+            "已连上。保持本窗口打开，在飞书开发者后台该应用中：\n"
+            "  1. 打开「事件与回调」（Events & Callbacks）→「事件配置」（Event configuration），\n"
+            "     订阅方式选「使用长连接接收事件」（Receive events through persistent connection），保存\n"
+            "  2. 点击「添加事件」（Add events），添加 im.message.receive_v1（接收消息 v2.0）\n"
+            "  3. 到「版本管理与发布」创建并发布新版本\n"
+            f"发布后按 Ctrl+C 结束；{minutes} 分钟后自动结束。"
+        )
+        events.wait(minutes * 60)
+        click.echo(f"已保持 {minutes} 分钟，断开长连接；还没保存好就重新运行本命令。")
+    except KeyboardInterrupt:
+        click.echo("已断开长连接。")
+    except EventConnectionFailed as error:
+        raise click.ClickException(str(error)) from error
+    finally:
+        events.close()
+
+
 def real_ports(user_config: UserConfig) -> Ports:
     """按用户配置组装真实的外部端口。"""
     from sub2obsidian.bilibili import BilibiliAdapter, HttpBilibiliClient
     from sub2obsidian.browser_credentials import BrowserCredentials
     from sub2obsidian.douyin import DouyinAdapter, F2DouyinClient
     from sub2obsidian.feishu import FeishuInbox
+    from sub2obsidian.feishu_events import LarkFeishuEvents
     from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
 
@@ -408,6 +459,7 @@ def real_ports(user_config: UserConfig) -> Ports:
         },
         transcriber=FasterWhisperTranscriber(),
         inbox=FeishuInbox(user_config),
+        feishu_events=LarkFeishuEvents(),
     )
 
 

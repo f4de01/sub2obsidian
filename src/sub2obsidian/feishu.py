@@ -10,6 +10,10 @@ r"""飞书收件箱：用户把链接私聊发给飞书自建应用的机器人�
 说明消息，从发送结果中取得 chat_id 并记下。
 
 网络层（FeishuClient）与解析分开：契约测试用按开放平台文档构造的响应样本回放网络层。
+
+你能给机器人发消息，前提是应用订阅了「接收消息」事件（im.message.receive_v1）；开发者后台保存
+「使用长连接接收事件」这一订阅方式时，要求当时有客户端连着长连接：见 feishu_events.py，
+只在配置时用，日常 sync 照常主动拉取。
 """
 
 from __future__ import annotations
@@ -73,7 +77,9 @@ class FeishuInbox:
         self.client = client or HttpFeishuClient()
 
     def read(self, cursor: str | None) -> InboxBatch:
-        app_id, app_secret, open_id = self._credentials()
+        app_id, app_secret, open_id = read_credentials(
+            self.user_config, "FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_OPEN_ID"
+        )
         token = self._token(app_id, app_secret)
         chat_id = self._chat(token, open_id)
         after = _parse_cursor(cursor)
@@ -90,18 +96,6 @@ class FeishuInbox:
             if text:
                 messages.append(text)
         return InboxBatch(messages, None if last is None else f"{last[0]}:{last[1]}")
-
-    def _credentials(self) -> tuple[str, str, str]:
-        path = self.user_config.credentials_dir / CREDENTIALS_FILE
-        if not path.exists():
-            raise InboxNotConfigured(f"飞书收件箱尚未配置：{SETUP_HINT}")
-        values = _read_env(path)
-        keys = ["FEISHU_APP_ID", "FEISHU_APP_SECRET", "FEISHU_OPEN_ID"]
-        missing = [key for key in keys if not values.get(key)]
-        if missing:
-            raise InboxNotConfigured(f"飞书凭据缺少 {'、'.join(missing)}：{SETUP_HINT}")
-        app_id, app_secret, open_id = (values[key] for key in keys)
-        return app_id, app_secret, open_id
 
     def _token(self, app_id: str, app_secret: str) -> str:
         response = self.client.call(
@@ -156,6 +150,18 @@ class FeishuInbox:
             if not data.get("has_more"):
                 return
             params = {**params, "page_token": data["page_token"]}
+
+
+def read_credentials(user_config: UserConfig, *keys: str) -> list[str]:
+    """feishu.env 中的这几项（按给出的顺序）；文件不在或缺项时抛 InboxNotConfigured。"""
+    path = user_config.credentials_dir / CREDENTIALS_FILE
+    if not path.exists():
+        raise InboxNotConfigured(f"飞书收件箱尚未配置：{SETUP_HINT}")
+    values = _read_env(path)
+    missing = [key for key in keys if not values.get(key)]
+    if missing:
+        raise InboxNotConfigured(f"飞书凭据缺少 {'、'.join(missing)}：{SETUP_HINT}")
+    return [values[key] for key in keys]
 
 
 def _data(response: dict[str, Any], action: str) -> dict[str, Any]:
