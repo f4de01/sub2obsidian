@@ -1,0 +1,63 @@
+{
+    "code": 0,
+    "msg": "success",
+    "data": {
+        "has_more": false,
+        "items": [
+            {
+                "message_id": "om_2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f",
+                "msg_type": "post",
+                "create_time": "1759900180789",
+                "update_time": "1759900180789",
+                "deleted": false,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "ou_7d8a6e6df7621556ce0d21922b676706",
+                    "id_type": "open_id",
+                    "sender_type": "user",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"title\": \"\", \"content\": [[{\"tag\": \"text\", \"text\": \"公众号这篇值得一看：\", \"style\": []}, {\"tag\": \"a\", \"href\": \"https://mp.weixin.qq.com/s/JJHlJsWEqFG77LdzhvzDNw\", \"text\": \"通过增强PDF结构识别，革新检索增强生成技术(RAG)\", \"style\": []}], [{\"tag\": \"img\", \"image_key\": \"img_47354fbc-a159-40ed-86ab-2ad0f1acb42g\"}]]}"
+                }
+            },
+            {
+                "message_id": "om_3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a",
+                "msg_type": "text",
+                "create_time": "1759900240000",
+                "update_time": "1759900240000",
+                "deleted": true,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "ou_7d8a6e6df7621556ce0d21922b676706",
+                    "id_type": "open_id",
+                    "sender_type": "user",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"text\": \"This message was recalled\"}"
+                }
+            },
+            {
+                "message_id": "om_4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b",
+                "msg_type": "text",
+                "create_time": "1759900300321",
+                "update_time": "1759900300321",
+                "deleted": false,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "ou_7d8a6e6df7621556ce0d21922b676706",
+                    "id_type": "open_id",
+                    "sender_type": "user",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"text\": \"【RAG 讲解-哔哩哔哩】 https://b23.tv/XyZ7890\"}"
+                }
+            }
+        ]
+    }
+}

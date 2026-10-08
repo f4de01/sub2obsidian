@@ -34,8 +34,10 @@ class UnsupportedLink(ValueError):
     """无法识别平台，或该平台的这类链接不是可采集的来源。"""
 
 
-# 中文分享文本里链接常紧挨着全角标点，遇到它们即视为链接结束。
-_URL = re.compile(r"https?://[^\s<>\"'，。！？；：、（）【】《》「」]+", re.IGNORECASE)
+# 中文分享文本里链接常紧挨着中文与全角标点：链接只由可见的 ASCII 字符组成，遇到其他字符
+# 即视为结束。方括号也不算在内，这样飞书消息里 [文字](链接) 写法的超链接也能取出。
+# （字符类不能忽略大小写：i、k、s 等 ASCII 字母有非 ASCII 的大小写对应字符。）
+_URL = re.compile(r"(?i:https?)://[^\x00-\x20\x7f-\U0010ffff<>\"'\[\]]+")
 
 _BV = re.compile(r"(?i:bv)([0-9A-Za-z]{10})")
 _BILIBILI_HOSTS = {"bilibili.com", "www.bilibili.com", "m.bilibili.com"}
@@ -48,7 +50,8 @@ Expander = Callable[[str, str], str]
 
 
 def extract_urls(text: str) -> list[str]:
-    return [match.rstrip(".,;:!?)]") for match in _URL.findall(text)]
+    """文本中的链接，按出现先后；同一链接出现多次只算一次。"""
+    return list(dict.fromkeys(match.rstrip(".,;:!?)") for match in _URL.findall(text)))
 
 
 def _bilibili_ref(bv_suffix: str) -> SourceRef:

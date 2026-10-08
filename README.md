@@ -86,6 +86,40 @@ sub2obsidian capture --vault "E:\笔记\知识库" <链接>                    #
   口播稿.md   每段一行，以 [时:分:秒] 开头；平台字幕与 ASR 转写格式相同
 ```
 
+## 日常同步：飞书收件箱 + `sync`
+
+日常增量靠**推送**：在手机上把 B站、公众号等的分享链接发给飞书机器人（与它的私聊就是**收件箱**），回到电脑执行一次 `sync`。
+
+### 配置飞书收件箱（一次性）
+
+飞书自建应用需要人工创建。在本仓库根目录用 Git Bash 运行配置向导，它逐步打开飞书开放平台的页面，告诉你点哪里、复制什么：
+
+```bash
+bash scripts/feishu-inbox-setup.sh
+```
+
+向导覆盖：创建企业自建应用 → 复制 App ID 与 App Secret → 开启机器人能力 → 开通权限 `im:message`（获取与发送单聊、群组消息）→ 发布版本（可用范围包含你自己）→ 在 API 调试台取得你在该应用下的 open_id。三个值写入 `%APPDATA%\sub2obsidian\credentials\feishu.env`，绝不进入知识库或 git 仓库。可以重复运行，回车保留已保存的值。
+
+不需要事件订阅、公网回调或常驻进程：`sync` 时通过消息列表 API 主动拉取私聊里的新消息。首次 `sync` 时机器人会给你发一条「收件箱已连接」，从而确定私聊会话；之后就把链接发到这个私聊。
+
+### `sync`
+
+```powershell
+sub2obsidian sync
+sub2obsidian sync --vault "E:\笔记\知识库"
+```
+
+依次：
+
+1. 读取收件箱中上次读到之后的新消息（电脑关机期间推送的也不会丢；已读的消息不再处理）；
+2. 从每条消息中提取链接（消息里夹杂文字也可以），作为推送来的来源登记为「已通过」；无法识别平台的链接、没有链接的消息在输出中提示；
+3. 采集所有「已通过」的来源（包括以前采集失败的），按平台交给对应的适配器；
+4. 为「已采集」的视频转写口播稿（同 `transcribe`）；
+5. 对原始材料的改动单独提交一次 git（`sync: …`），不卷入 Wiki 与你未提交的改动；
+6. 输出汇总：新增来源、已采集、已转写、已失效、失败的数量，以及失效与失败的来源和原因。
+
+单条失败不中断整批：失败的来源保持原状态并记下原因，下次 `sync` 自动重试；短链暂时解析不了的链接也会记下，下次重试。飞书读取失败时照常采集与转写其他来源，收件箱的读取位置不动，下次再读；还没配置飞书时跳过收件箱。读取位置（游标）保存在用户配置目录的 `state/inbox.toml`。
+
 ## 转写（ASR）
 
 ```powershell
@@ -137,9 +171,9 @@ sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源�
 | 位置 | 内容 |
 | --- | --- |
 | `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表 |
-| `credentials/` | 平台与飞书应用凭据；如 `bilibili.cookies.txt`（每次使用时从浏览器配置重新导出） |
+| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`（每次使用时从浏览器配置重新导出）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
 | `browser/<平台>/` | 登录用的 Playwright 持久化浏览器配置 |
-| `state/` | 收件箱游标、回填断点等运行状态 |
+| `state/` | 运行状态：`inbox.toml`（收件箱读到的位置、待重试的链接）、`feishu.toml`（与机器人私聊的会话 ID）等 |
 
 ## 开发
 
@@ -148,7 +182,7 @@ uv sync
 uv run pytest
 ```
 
-测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、凭据提供者、转写引擎等外部端口在行为测试中换成假实现；真实的 B站 适配器用 `tests/fixtures/bilibili/` 中的录制样本做契约测试（见该目录的 README），测试不需要网络、登录或浏览器。
+测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、转写引擎、凭据提供者四个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
 
 faster-whisper 的集成测试（`tests/test_faster_whisper.py`，测试音频为 Windows 语音合成的一段中文）只在本机有 CUDA 显卡、且 `large-v3-turbo` 模型已缓存时运行，否则自动跳过；测试从不下载模型。要运行它，先执行一次 `sub2obsidian transcribe`（或 `uv run python -c "from faster_whisper.utils import download_model; download_model('large-v3-turbo')"`）把模型下载好。
 

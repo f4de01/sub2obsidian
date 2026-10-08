@@ -1,6 +1,6 @@
 """行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。
 
-四个外部端口中，本文件提供平台适配器（B站、公众号）、凭据提供者与转写引擎的假实现（收件箱随后续工单加入）。
+四个外部端口（平台适配器、收件箱、转写引擎、凭据提供者）在这里都有假实现。
 """
 
 from __future__ import annotations
@@ -15,6 +15,7 @@ from click.testing import CliRunner, Result
 from sub2obsidian.cli import Ports, cli
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LoginRequired
+from sub2obsidian.inbox import InboxBatch, InboxError, InboxNotConfigured
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import FetchedSource, FetchFailed, SourceUnavailable
 from sub2obsidian.transcript import Segment
@@ -147,12 +148,33 @@ class FakeTranscriber:
 
 
 @dataclass
+class FakeInbox:
+    """替换飞书收件箱：messages 是用户按先后推送的消息；游标是已读到的条数。"""
+
+    messages: list[str] = field(default_factory=list)
+    failure: str | None = None  # 读取失败的原因
+    configured: bool = True
+
+    def push(self, *texts: str) -> None:
+        self.messages.extend(texts)
+
+    def read(self, cursor: str | None) -> InboxBatch:
+        if not self.configured:
+            raise InboxNotConfigured("飞书收件箱尚未配置")
+        if self.failure is not None:
+            raise InboxError(self.failure)
+        start = int(cursor) if cursor else 0
+        return InboxBatch(self.messages[start:], str(len(self.messages)))
+
+
+@dataclass
 class Cli:
     launcher: FakeLauncher
     credentials: FakeCredentials
     bilibili: FakeBilibili
     wechat: FakeWechat
     transcriber: FakeTranscriber
+    inbox: FakeInbox
 
     def run(self, *args: str) -> Result:
         ports = Ports(
@@ -160,6 +182,7 @@ class Cli:
             credentials=self.credentials,
             adapters={"bilibili": self.bilibili, "wechat": self.wechat},
             transcriber=self.transcriber,
+            inbox=self.inbox,
         )
         return CliRunner().invoke(cli, list(args), obj=ports, catch_exceptions=False)
 
@@ -199,12 +222,18 @@ def transcriber() -> FakeTranscriber:
 
 
 @pytest.fixture
+def inbox() -> FakeInbox:
+    return FakeInbox()
+
+
+@pytest.fixture
 def run(
     launcher: FakeLauncher,
     credentials: FakeCredentials,
     bilibili: FakeBilibili,
     wechat: FakeWechat,
     transcriber: FakeTranscriber,
+    inbox: FakeInbox,
 ) -> Cli:
     return Cli(
         launcher=launcher,
@@ -212,6 +241,7 @@ def run(
         bilibili=bilibili,
         wechat=wechat,
         transcriber=transcriber,
+        inbox=inbox,
     )
 
 

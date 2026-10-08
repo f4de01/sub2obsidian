@@ -1,0 +1,22 @@
+{
+    "code": 0,
+    "msg": "success",
+    "data": {
+        "message_id": "om_dc13264520392913993dd051dba21dcf",
+        "msg_type": "text",
+        "create_time": "1759900000000",
+        "update_time": "1759900000000",
+        "deleted": false,
+        "updated": false,
+        "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+        "sender": {
+            "id": "cli_a1b2c3d4e5f60708",
+            "id_type": "app_id",
+            "sender_type": "app",
+            "tenant_key": "736588c9260f175e"
+        },
+        "body": {
+            "content": "{\"text\": \"sub2obsidian 收件箱已连接。以后把 B站、公众号等的分享链接发到这里，电脑上运行 sub2obsidian sync 即可采集。\"}"
+        }
+    }
+}

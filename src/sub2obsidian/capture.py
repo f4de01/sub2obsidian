@@ -31,6 +31,7 @@ class Outcome:
     message: str
     ok: bool
     changed: Source | None = None  # 本次改动了的来源
+    new: bool = False  # 本次新登记了来源
 
 
 def capture_text(text: str, vault: Path, adapters: Mapping[str, PlatformAdapter]) -> list[Outcome]:
@@ -64,17 +65,34 @@ def _capture_url(
     url: str, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
 ) -> Outcome:
     try:
-        ref = normalize(url, lambda platform, short: adapters[platform].expand_short_link(short))
+        source, _ = register(url, repo, adapters)
     except (UnsupportedLink, AdapterError) as error:
         return Outcome(str(error), ok=False)
-    adapter = adapters[ref.platform]
-    source = repo.find(ref)
-    if source is None:
-        kind = _PLATFORM_KINDS.get(ref.platform, Kind.VIDEO)
-        source = repo.create(ref, kind=kind, origin=Origin.PUSH, status=Status.APPROVED)
-    elif source.status is not Status.APPROVED:
+    if source.status is not Status.APPROVED:
         # 只有停在「已通过」的来源（上次采集失败）才重试
-        return Outcome(f"来源已存在：{source.title}（{ref.display}），{source.status}", ok=True)
+        return Outcome(f"来源已存在：{source.title}（{source.ref.display}），{source.status}", ok=True)
+    return collect(source, repo, adapters[source.ref.platform])
+
+
+def register(
+    url: str, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
+) -> tuple[Source, bool]:
+    """把链接登记为推送来的来源（直接为「已通过」），返回来源及它是否为本次新建。
+
+    同一来源无论以哪种链接写法提交都只登记一份。链接无法识别时抛 UnsupportedLink，
+    短链解析失败时抛 AdapterError（FetchFailed 可重试）。
+    """
+    ref = normalize(url, lambda platform, short: adapters[platform].expand_short_link(short))
+    source = repo.find(ref)
+    if source is not None:
+        return source, False
+    kind = _PLATFORM_KINDS.get(ref.platform, Kind.VIDEO)
+    return repo.create(ref, kind=kind, origin=Origin.PUSH, status=Status.APPROVED), True
+
+
+def collect(source: Source, repo: SourceRepository, adapter: PlatformAdapter) -> Outcome:
+    """采集一条「已通过」的来源：失效转为「已失效」，可重试的失败记下原因、保持原状态。"""
+    ref = source.ref
     try:
         fetched = adapter.fetch(ref)
     except SourceUnavailable as error:

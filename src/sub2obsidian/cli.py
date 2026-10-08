@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -13,9 +13,13 @@ from sub2obsidian.compilation import Refused, mark_compiled, status_report
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
 from sub2obsidian.git import GitError
+from sub2obsidian.inbox import Inbox
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import PlatformAdapter
+from sub2obsidian.sync import INBOX_STATE_FILE
+from sub2obsidian.sync import summarize as summarize_sync
+from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
 from sub2obsidian.transcription import Transcriber, summarize, transcribe_collected
 from sub2obsidian.vault import RAW_DIR, init_vault
@@ -29,6 +33,7 @@ class Ports:
     credentials: CredentialProvider
     adapters: Mapping[str, PlatformAdapter]  # 平台 → 平台适配器
     transcriber: Transcriber
+    inbox: Inbox
 
 
 @click.group()
@@ -108,6 +113,28 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
         raise SystemExit(1)
 
 
+def _run_batch(
+    vault: Path, outcomes: Iterable[Outcome], *, command: str, verb: str
+) -> tuple[list[Outcome], MissingTool | None]:
+    """逐条输出结果，然后把原始材料的改动单独提交一次 git。
+
+    缺少本机工具时整批中止，已完成的改动照常提交。
+    """
+    done: list[Outcome] = []
+    stopped: MissingTool | None = None
+    try:
+        for outcome in outcomes:
+            click.echo(outcome.message, err=not outcome.ok)
+            done.append(outcome)
+    except MissingTool as error:
+        stopped = error
+    try:
+        commit_changes(vault, done, command=command, verb=verb)
+    except GitError as error:
+        raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
+    return done, stopped
+
+
 @cli.command()
 @vault_option
 @click.pass_obj
@@ -115,21 +142,42 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
     """为所有「已采集」（没有平台字幕）的视频来源转写口播稿；适合单独批量执行。"""
     vault = _initialized_vault(vault_path)
     terms = UserConfig.default().glossary()
-    outcomes: list[Outcome] = []
-    stopped: MissingTool | None = None
-    try:
-        for outcome in transcribe_collected(vault, ports.adapters, ports.transcriber, terms):
-            click.echo(outcome.message, err=not outcome.ok)
-            outcomes.append(outcome)
-    except MissingTool as error:
-        stopped = error
-    try:
-        commit_changes(vault, outcomes, command="transcribe", verb="转写")
-    except GitError as error:
-        raise click.ClickException(f"口播稿已写入，但 git 提交失败：{error}") from error
+    outcomes, stopped = _run_batch(
+        vault,
+        transcribe_collected(vault, ports.adapters, ports.transcriber, terms),
+        command="transcribe",
+        verb="转写",
+    )
     if stopped is not None:
         raise click.ClickException(f"转写中止：{stopped}")
     click.echo(summarize(outcomes) if outcomes else "没有待转写的来源")
+    if not all(outcome.ok for outcome in outcomes):
+        raise SystemExit(1)
+
+
+@cli.command()
+@vault_option
+@click.pass_obj
+def sync(ports: Ports, vault_path: Path | None) -> None:
+    """读取收件箱中的新链接，采集所有「已通过」的来源并转写；原始材料的改动单独提交 git。"""
+    vault = _initialized_vault(vault_path)
+    user_config = UserConfig.default()
+    outcomes, stopped = _run_batch(
+        vault,
+        sync_sources(
+            vault,
+            ports.inbox,
+            ports.adapters,
+            ports.transcriber,
+            user_config.glossary(),
+            user_config.state_dir / INBOX_STATE_FILE,
+        ),
+        command="sync",
+        verb="同步",
+    )
+    click.echo(summarize_sync(outcomes))
+    if stopped is not None:
+        raise click.ClickException(f"转写中止：{stopped}")
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
 
@@ -175,15 +223,18 @@ def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> 
 def main() -> None:
     from sub2obsidian.bilibili import BilibiliAdapter
     from sub2obsidian.browser_credentials import BrowserCredentials
+    from sub2obsidian.feishu import FeishuInbox
     from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
 
-    credentials = BrowserCredentials(UserConfig.default())
+    user_config = UserConfig.default()
+    credentials = BrowserCredentials(user_config)
     cli(
         obj=Ports(
             launcher=SystemLauncher(),
             credentials=credentials,
             adapters={"bilibili": BilibiliAdapter(credentials), "wechat": WechatAdapter()},
             transcriber=FasterWhisperTranscriber(),
+            inbox=FeishuInbox(user_config),
         )
     )
