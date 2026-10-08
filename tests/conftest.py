@@ -1,10 +1,11 @@
 """行为测试的公共夹具：测试只通过「CLI 命令 + 知识库目录」观察行为。
 
-四个外部端口中，本文件提供平台适配器与凭据提供者的假实现（收件箱、转写引擎随后续工单加入）。
+四个外部端口中，本文件提供平台适配器、凭据提供者与转写引擎的假实现（收件箱随后续工单加入）。
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LoginRequired
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.transcript import Segment
+from sub2obsidian.transcription import TranscriptionFailed
 
 
 @dataclass
@@ -66,6 +69,9 @@ class FakeBilibili:
     failures: dict[str, str] = field(default_factory=dict)
     short_links: dict[str, str] = field(default_factory=dict)
     fetched: list[str] = field(default_factory=list)
+    audio_failures: dict[str, str] = field(default_factory=dict)
+    audio_unavailable: dict[str, str] = field(default_factory=dict)
+    audio_files: list[Path] = field(default_factory=list)  # 每次下载的临时音频
 
     def expand_short_link(self, url: str) -> str:
         if url not in self.short_links:
@@ -81,18 +87,47 @@ class FakeBilibili:
             raise SourceUnavailable(self.unavailable[ref.platform_id])
         return self.videos[ref.platform_id]
 
+    def download_audio(self, ref: SourceRef, directory: Path) -> Path:
+        if ref.platform_id in self.audio_failures:
+            raise FetchFailed(self.audio_failures.pop(ref.platform_id))
+        if ref.platform_id in self.audio_unavailable:
+            raise SourceUnavailable(self.audio_unavailable[ref.platform_id])
+        audio = directory / f"{ref.platform_id}.m4a"
+        audio.write_bytes(f"audio:{ref.platform_id}".encode())
+        self.audio_files.append(audio)
+        return audio
+
+
+@dataclass
+class FakeTranscriber:
+    """替换 faster-whisper：按音频内容返回预置分段，并记录每次调用收到的音频与术语。"""
+
+    origin: str = "假转写引擎 v1"
+    segments: dict[str, list[Segment]] = field(default_factory=dict)  # 音频内容 → 分段
+    failures: dict[str, str] = field(default_factory=dict)  # 音频内容 → 失败原因
+    calls: list[tuple[str, list[str]]] = field(default_factory=list)  # (音频内容, 术语)
+
+    def transcribe(self, audio: Path, terms: Sequence[str]) -> list[Segment]:
+        content = audio.read_text(encoding="utf-8")
+        self.calls.append((content, list(terms)))
+        if content in self.failures:
+            raise TranscriptionFailed(self.failures[content])
+        return self.segments[content]
+
 
 @dataclass
 class Cli:
     launcher: FakeLauncher
     credentials: FakeCredentials
     bilibili: FakeBilibili
+    transcriber: FakeTranscriber
 
     def run(self, *args: str) -> Result:
         ports = Ports(
             launcher=self.launcher,
             credentials=self.credentials,
             adapters={"bilibili": self.bilibili},
+            transcriber=self.transcriber,
         )
         return CliRunner().invoke(cli, list(args), obj=ports, catch_exceptions=False)
 
@@ -122,8 +157,18 @@ def bilibili(credentials: FakeCredentials) -> FakeBilibili:
 
 
 @pytest.fixture
-def run(launcher: FakeLauncher, credentials: FakeCredentials, bilibili: FakeBilibili) -> Cli:
-    return Cli(launcher=launcher, credentials=credentials, bilibili=bilibili)
+def transcriber() -> FakeTranscriber:
+    return FakeTranscriber()
+
+
+@pytest.fixture
+def run(
+    launcher: FakeLauncher,
+    credentials: FakeCredentials,
+    bilibili: FakeBilibili,
+    transcriber: FakeTranscriber,
+) -> Cli:
+    return Cli(launcher=launcher, credentials=credentials, bilibili=bilibili, transcriber=transcriber)
 
 
 @pytest.fixture

@@ -17,6 +17,7 @@ from sub2obsidian.bilibili import BilibiliAdapter, HttpBilibiliClient
 from sub2obsidian.credentials import LoginRequired
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import FetchFailed, SourceUnavailable
+from sub2obsidian.tools import MissingTool
 
 FIXTURES = Path(__file__).parent / "fixtures" / "bilibili"
 REF = SourceRef("bilibili", "BV1GJ411x7h7", "https://www.bilibili.com/video/BV1GJ411x7h7")
@@ -49,6 +50,7 @@ class ReplayClient:
     info_error: str | None = None
     nav: str = "nav_logged_in.json"
     view: str = "view_ok.json"
+    audio_error: str | None = None
     requests: list[str] = field(default_factory=list)
 
     def video_info(self, url: str, cookies: Path) -> dict:
@@ -67,6 +69,14 @@ class ReplayClient:
 
     def redirect_target(self, url: str) -> str:  # pragma: no cover
         raise AssertionError
+
+    def download_audio(self, url: str, directory: Path, cookies: Path | None) -> Path:
+        self.requests.append(f"audio {url} cookies={cookies.name if cookies else None}")
+        if self.audio_error:
+            raise FetchFailed(fixture(self.audio_error))
+        audio = directory / "BV1GJ411x7h7.wav"
+        audio.write_bytes(b"RIFF fake wav")
+        return audio
 
 
 @pytest.fixture
@@ -208,3 +218,49 @@ def test_rate_limited_login_check_is_retryable_not_a_login_problem(cookies):
 
     with pytest.raises(FetchFailed, match="请求被拦截（-412）"):
         adapter(cookies, client).fetch(REF)
+
+
+def test_audio_is_downloaded_into_the_given_directory_with_login_cookies(cookies, tmp_path: Path):
+    client = ReplayClient()
+    directory = tmp_path / "临时音频"
+    directory.mkdir()
+
+    audio = adapter(cookies, client).download_audio(REF, directory)
+
+    assert audio.parent == directory
+    assert audio.read_bytes() == b"RIFF fake wav"
+    assert client.requests == [f"audio {REF.url} cookies=bilibili.cookies.txt"]
+
+
+def test_audio_of_a_public_video_downloads_without_login(tmp_path: Path):
+    client = ReplayClient()
+
+    audio = adapter(None, client).download_audio(REF, tmp_path)
+
+    assert audio.exists()
+    assert client.requests == [f"audio {REF.url} cookies=None"]
+
+
+def test_audio_of_a_deleted_video_is_reported_unavailable(cookies, tmp_path: Path):
+    client = ReplayClient(audio_error="ytdlp_error_unavailable.txt", view="view_unavailable.json")
+
+    with pytest.raises(SourceUnavailable, match="稿件不可见（62002）"):
+        adapter(cookies, client).download_audio(REF, tmp_path)
+
+
+def test_audio_download_failure_on_a_visible_video_is_retryable(cookies, tmp_path: Path):
+    client = ReplayClient(audio_error="ytdlp_error_unavailable.txt", view="view_ok.json")
+
+    with pytest.raises(FetchFailed, match="extractor error"):
+        adapter(cookies, client).download_audio(REF, tmp_path)
+
+
+def test_audio_download_without_ffmpeg_fails_clearly_before_any_request(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    empty = tmp_path / "空的PATH"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+
+    with pytest.raises(MissingTool, match="未找到 ffmpeg"):
+        HttpBilibiliClient(interval=(0, 0)).download_audio(REF.url, tmp_path, None)

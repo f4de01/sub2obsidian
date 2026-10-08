@@ -8,13 +8,16 @@ from pathlib import Path
 
 import click
 
-from sub2obsidian.capture import capture_text, commit_changes
+from sub2obsidian.capture import Outcome, capture_text, commit_changes
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
 from sub2obsidian.git import GitError
 from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import PlatformAdapter
+from sub2obsidian.tools import MissingTool
+from sub2obsidian.transcription import Transcriber, transcribe_collected
+from sub2obsidian.transcription import summary as transcription_summary
 from sub2obsidian.vault import RAW_DIR, init_vault
 
 
@@ -25,6 +28,7 @@ class Ports:
     launcher: Launcher
     credentials: CredentialProvider
     adapters: Mapping[str, PlatformAdapter]  # 平台 → 平台适配器
+    transcriber: Transcriber
 
 
 @click.group()
@@ -78,14 +82,17 @@ def _initialized_vault(path: Path | None) -> Path:
     return vault
 
 
-@cli.command()
-@click.argument("text", nargs=-1, required=True)
-@click.option(
+vault_option = click.option(
     "--vault",
     "vault_path",
     type=click.Path(path_type=Path),
     help="知识库路径；缺省取用户配置中的知识库。",
 )
+
+
+@cli.command()
+@click.argument("text", nargs=-1, required=True)
+@vault_option
 @click.pass_obj
 def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> None:
     """采集链接或分享文本中的来源（推送来的来源视为已通过筛选）。"""
@@ -101,9 +108,36 @@ def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> Non
         raise SystemExit(1)
 
 
+@cli.command()
+@vault_option
+@click.pass_obj
+def transcribe(ports: Ports, vault_path: Path | None) -> None:
+    """为所有「已采集」（没有平台字幕）的视频来源转写口播稿；适合单独批量执行。"""
+    vault = _initialized_vault(vault_path)
+    terms = UserConfig.default().glossary()
+    outcomes: list[Outcome] = []
+    stopped: MissingTool | None = None
+    try:
+        for outcome in transcribe_collected(vault, ports.adapters, ports.transcriber, terms):
+            click.echo(outcome.message, err=not outcome.ok)
+            outcomes.append(outcome)
+    except MissingTool as error:
+        stopped = error
+    try:
+        commit_changes(vault, outcomes, command="transcribe", verb="转写")
+    except GitError as error:
+        raise click.ClickException(f"口播稿已写入，但 git 提交失败：{error}") from error
+    if stopped is not None:
+        raise click.ClickException(f"转写中止：{stopped}")
+    click.echo(transcription_summary(outcomes) if outcomes else "没有待转写的来源")
+    if not all(outcome.ok for outcome in outcomes):
+        raise SystemExit(1)
+
+
 def main() -> None:
     from sub2obsidian.bilibili import BilibiliAdapter
     from sub2obsidian.browser_credentials import BrowserCredentials
+    from sub2obsidian.whisper import FasterWhisperTranscriber
 
     credentials = BrowserCredentials(UserConfig.default())
     cli(
@@ -111,5 +145,6 @@ def main() -> None:
             launcher=SystemLauncher(),
             credentials=credentials,
             adapters={"bilibili": BilibiliAdapter(credentials)},
+            transcriber=FasterWhisperTranscriber(),
         )
     )

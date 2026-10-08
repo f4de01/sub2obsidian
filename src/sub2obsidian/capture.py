@@ -30,7 +30,9 @@ def capture_text(text: str, vault: Path, adapters: Mapping[str, PlatformAdapter]
     return [_capture_url(url, repo, adapters) for url in urls]
 
 
-def commit_changes(vault: Path, outcomes: list[Outcome]) -> None:
+def commit_changes(
+    vault: Path, outcomes: list[Outcome], *, command: str = "capture", verb: str = "采集"
+) -> None:
     """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。"""
     # 同一来源在一段文本里出现多次时只算一次
     by_directory = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
@@ -39,10 +41,10 @@ def commit_changes(vault: Path, outcomes: list[Outcome]) -> None:
         return
     lines = [" ".join(filter(None, [s.ref.display, s.meta["标题"]])) for s in changed]
     if len(lines) == 1:
-        message = f"capture: {lines[0]}"
+        message = f"{command}: {lines[0]}"
     else:
         listing = "\n".join(f"- {line}" for line in lines)
-        message = f"capture: 采集 {len(lines)} 个来源\n\n{listing}"
+        message = f"{command}: {verb} {len(lines)} 个来源\n\n{listing}"
     paths = [source.directory.relative_to(vault).as_posix() for source in changed]
     git.commit_paths(vault, paths, message)
 

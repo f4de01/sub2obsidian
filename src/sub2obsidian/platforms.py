@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from sub2obsidian.links import SourceRef
@@ -22,7 +23,6 @@ class SourceUnavailable(AdapterError):
 
 class FetchFailed(AdapterError):
     """可重试的失败（网络、风控、验证页等）：来源保持原状态，下次再试。"""
-
 
 @dataclass(frozen=True)
 class Asset:
@@ -55,4 +55,12 @@ class PlatformAdapter(Protocol):
 
     def fetch(self, ref: SourceRef) -> FetchedSource:
         """采集一条来源；不可用时抛 SourceUnavailable，可重试的失败抛 FetchFailed。"""
+        ...
+
+    def download_audio(self, ref: SourceRef, directory: Path) -> Path:
+        """把视频来源的音频下载到 directory（临时目录，由调用方转写后删除），返回音频文件。
+
+        不可用时抛 SourceUnavailable，可重试的失败抛 FetchFailed，缺少 ffmpeg 等本机工具时抛
+        MissingTool。
+        """
         ...

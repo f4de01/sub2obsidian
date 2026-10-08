@@ -5,7 +5,10 @@ description = "把抖音、B站、公众号收藏采集成原始材料，并交�
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "av>=15,<19",
     "click>=8.1",
+    "faster-whisper>=1.2.1",
+    "nvidia-cublas-cu12>=12.9.2.10 ; sys_platform == 'win32'",
     "playwright>=1.63.0",
     "pyyaml>=6.0.3",
     "tomli-w>=1.0",

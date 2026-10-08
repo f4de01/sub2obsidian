@@ -1,4 +1,5 @@
-"""B站 平台适配器：基于 yt-dlp 采集视频元数据、封面与平台字幕（CC 或 AI 字幕，需登录）。
+"""B站 平台适配器：基于 yt-dlp 采集视频元数据、封面与平台字幕（CC 或 AI 字幕，需登录），
+并为没有字幕的视频下载供转写的音频（需要 ffmpeg）。
 
 网络层（BilibiliClient）与解析分开：契约测试用录制样本回放网络层，验证解析与判定。
 """
@@ -19,6 +20,7 @@ from urllib.parse import urlencode, urljoin, urlsplit
 from sub2obsidian.credentials import CredentialProvider, LoginRequired
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import Asset, FetchedSource, FetchFailed, SourceUnavailable
+from sub2obsidian.tools import require_ffmpeg
 from sub2obsidian.transcript import Transcript, parse_srt
 
 PLATFORM = "bilibili"
@@ -48,6 +50,11 @@ class BilibiliClient(Protocol):
         """链接跳转到的地址（只看一跳，不跟随）。"""
         ...
 
+    def download_audio(self, url: str, directory: Path, cookies: Path | None) -> Path:
+        """把视频的音轨下载到 directory 并转成 16 kHz 单声道 WAV；失败抛 FetchFailed，
+        缺少 ffmpeg 时抛 MissingTool。"""
+        ...
+
 
 class BilibiliAdapter:
     platform = PLATFORM
@@ -69,6 +76,18 @@ class BilibiliAdapter:
             self._raise_if_unavailable(ref)
             raise
         return self._to_source(info)
+
+    def download_audio(self, ref: SourceRef, directory: Path) -> Path:
+        # 公开视频的音频不需要登录；已登录时带上 cookie，降低被风控拦截的概率
+        try:
+            cookies: Path | None = self.credentials.cookies_file(PLATFORM)
+        except LoginRequired:
+            cookies = None
+        try:
+            return self.client.download_audio(ref.url, directory, cookies)
+        except FetchFailed:
+            self._raise_if_unavailable(ref)
+            raise
 
     def _verify_login(self, cookies: Path) -> None:
         """cookie 失效时 yt-dlp 只会悄悄拿不到字幕，所以先向 nav 接口确认登录态。"""
@@ -229,3 +248,33 @@ class HttpBilibiliClient:
                 return ydl.sanitize_info(ydl.extract_info(url, download=False))
         except yt_dlp.utils.DownloadError as error:
             raise FetchFailed(str(error).removeprefix("ERROR: ")) from error
+
+    def download_audio(self, url: str, directory: Path, cookies: Path | None) -> Path:
+        ffmpeg = require_ffmpeg()
+        import yt_dlp
+
+        options = {
+            "logger": _QuietLogger(),
+            "noplaylist": True,
+            "format": "bestaudio/best",
+            "outtmpl": str(directory / "%(id)s.%(ext)s"),
+            "ffmpeg_location": ffmpeg,
+            # 转写只需要 16 kHz 单声道；统一成 WAV，转写引擎不必再适配各种封装
+            "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "wav"}],
+            "postprocessor_args": {"extractaudio": ["-ar", "16000", "-ac", "1"]},
+            "cachedir": False,
+            "noprogress": True,
+            "sleep_interval_requests": self.interval[0],
+        }
+        if cookies is not None:
+            options["cookiefile"] = str(cookies)
+        self._throttle()
+        try:
+            with yt_dlp.YoutubeDL(options) as ydl:
+                ydl.download([url])
+        except yt_dlp.utils.DownloadError as error:
+            raise FetchFailed(str(error).removeprefix("ERROR: ")) from error
+        audio = sorted(directory.glob("*.wav"))
+        if not audio:
+            raise FetchFailed(f"音频下载后没有找到转换好的 WAV 文件：{url}")
+        return audio[0]

@@ -136,12 +136,20 @@ class SourceRepository:
         return self.raw / ref.platform / ref.platform_id
 
     def find(self, ref: SourceRef) -> Source | None:
-        metadata = self.directory(ref) / METADATA_FILE
+        return self._load(self.directory(ref))
+
+    def in_status(self, status: Status) -> list[Source]:
+        """处于某来源状态的全部来源，按平台与平台内 ID 排序。"""
+        found = (self._load(directory) for directory in sorted(self.raw.glob("*/*")))
+        return [source for source in found if source is not None and source.status is status]
+
+    def _load(self, directory: Path) -> Source | None:
+        metadata = directory / METADATA_FILE
         if not metadata.is_file():
             return None
         text = metadata.read_text(encoding="utf-8")
         frontmatter, _, body = text.removeprefix("---\n").partition("\n---\n")
-        return Source(self.directory(ref), yaml.safe_load(frontmatter), body.lstrip("\n"))
+        return Source(directory, yaml.safe_load(frontmatter), body.lstrip("\n"))
 
     def create(self, ref: SourceRef, *, kind: Kind, origin: Origin, status: Status) -> Source:
         """新建来源的元数据存根；拉取来的为待筛，推送来的直接为已通过。"""

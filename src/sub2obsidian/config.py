@@ -63,6 +63,13 @@ class UserConfig:
         configured = self.read().get("vault")
         return Path(configured) if configured else DEFAULT_VAULT
 
+    def glossary(self) -> list[str]:
+        """转写术语表：[transcribe] 表的 terms，作为提示传给转写引擎；未配置时为空。"""
+        terms = self.read().get("transcribe", {}).get("terms", [])
+        if isinstance(terms, str):  # 只写了一个术语时也能用
+            terms = [terms]
+        return [str(term).strip() for term in terms if str(term).strip()]
+
     def remember_vault(self, vault: Path) -> None:
         """首次初始化时记下知识库路径，供后续命令使用；已配置的不覆盖。"""
         settings = self.read()
