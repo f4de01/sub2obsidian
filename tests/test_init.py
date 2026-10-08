@@ -1,6 +1,7 @@
 """初始化 (Init)：新建知识库骨架。"""
 
 import json
+import re
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -192,6 +193,26 @@ def test_init_writes_dataview_status_page_counting_sources_and_listing_todos(run
     assert git(vault, "ls-files", "来源状态.md").strip() == "来源状态.md"
 
 
+def chapter(schema: str, heading: str) -> str:
+    """Schema 中以 heading（如「## 存档流程」）开头的一节，到下一个同级或更高级标题为止。
+
+    代码块里的示例页面也有 # 开头的行，不算标题。
+    """
+    level = heading.index(" ")
+    lines = schema.splitlines()
+    start = lines.index(heading)
+    fenced = False
+    for end in range(start + 1, len(lines)):
+        line = lines[end]
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and (marks := re.match(r"#+ ", line)) and len(marks[0]) - 1 <= level:
+            break
+    else:
+        end = len(lines)
+    return "\n".join(lines[start:end])
+
+
 def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run, vault: Path):
     run.run("init", str(vault))
 
@@ -207,8 +228,7 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
 def test_schema_tells_the_agent_how_to_fill_screening_suggestions(run, vault: Path):
     run.run("init", str(vault))
 
-    schema = (vault / "AGENTS.md").read_text(encoding="utf-8")
-    section = schema[schema.index("## 筛选建议流程") :]
+    section = chapter((vault / "AGENTS.md").read_text(encoding="utf-8"), "## 筛选建议流程")
     assert "待筛清单.md" in section
     assert "「建议：」" in section
     # 每条写「是否知识类 + 建议主题域」，勾选留给用户，CLI 负责状态转换
@@ -221,30 +241,23 @@ def test_schema_tells_the_agent_how_to_fill_screening_suggestions(run, vault: Pa
 def test_schema_defines_the_synthesis_page(run, vault: Path):
     run.run("init", str(vault))
 
-    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    section = schema[schema.index("### 综述页") : schema.index("## 批注")]
+    section = chapter((vault / "CLAUDE.md").read_text(encoding="utf-8"), "### 综述页")
     # 综述页放在 Wiki/综述/，有自己的页面类型与 frontmatter，论断同样带出处
     assert "Wiki/综述/" in section
     assert "页面类型: 综述页" in section
     assert "每条论断都要带出处" in section
 
 
-def chapter(schema: str, heading: str) -> str:
-    """Schema 中一个二级标题下的内容，到下一个二级标题为止。"""
-    body = schema.split(f"\n## {heading}\n", 1)[1]
-    return body.split("\n## ", 1)[0]
-
-
 def test_schema_tells_the_agent_to_answer_queries_and_archive_only_on_request(run, vault: Path):
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    query = chapter(schema, "问询流程")
+    query = chapter(schema, "## 问询流程")
     # 问询先读 index.md、回答带出处；用户不说「存档」就不写入任何文件
     assert "先读 `index.md`" in query
     assert "出处" in query
     assert "不写入任何文件" in query
-    archive = chapter(schema, "存档流程")
+    archive = chapter(schema, "## 存档流程")
     # 存档：写综述页，更新 index 与 log，以一次 git 提交结束
     assert "Wiki/综述/" in archive
     assert "index.md" in archive
@@ -255,7 +268,7 @@ def test_schema_tells_the_agent_to_answer_queries_and_archive_only_on_request(ru
 def test_schema_tells_the_agent_how_to_run_a_full_lint(run, vault: Path):
     run.run("init", str(vault))
 
-    lint = chapter((vault / "AGENTS.md").read_text(encoding="utf-8"), "全库体检流程")
+    lint = chapter((vault / "AGENTS.md").read_text(encoding="utf-8"), "## 全库体检流程")
     # 找出并修复五类问题，列出待裁决的分歧，Schema 改进建议留给用户决定，以一次 git 提交结束
     for problem in ["矛盾", "孤立页", "重复概念", "断链", "缺失的概念页"]:
         assert problem in lint, problem
