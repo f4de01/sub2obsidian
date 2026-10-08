@@ -1,0 +1,30 @@
+[project]
+name = "sub2obsidian"
+version = "0.1.0"
+description = "把抖音、B站、公众号收藏采集成原始材料，并交给 agent 编译成 Obsidian LLM Wiki 知识库"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "click>=8.1",
+    "tomli-w>=1.0",
+]
+
+[project.scripts]
+sub2obsidian = "sub2obsidian.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sub2obsidian"]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+filterwarnings = ["error"]
