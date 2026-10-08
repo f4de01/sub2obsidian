@@ -1,0 +1,4 @@
+{
+    "code": 99991672,
+    "msg": "Access denied. One of the following scopes is required: [im:message, im:message:readonly, im:message.history:readonly]. 应用尚未开通所需的应用身份权限：[im:message, im:message:readonly, im:message.history:readonly]"
+}

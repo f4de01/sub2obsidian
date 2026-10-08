@@ -1,0 +1,64 @@
+{
+    "code": 0,
+    "msg": "success",
+    "data": {
+        "has_more": true,
+        "page_token": "GxmvlNRvP0NdQZpa7yIqf_Lv_QuBwTQ8tXkX7w-irAghVD_TvuYd1aoJ1LQph86O-XImC4X9j9FhUPhXQDvtrQ==",
+        "items": [
+            {
+                "message_id": "om_dc13264520392913993dd051dba21dcf",
+                "msg_type": "text",
+                "create_time": "1759900000000",
+                "update_time": "1759900000000",
+                "deleted": false,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "cli_a1b2c3d4e5f60708",
+                    "id_type": "app_id",
+                    "sender_type": "app",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"text\": \"sub2obsidian 收件箱已连接。以后把 B站、公众号等的分享链接发到这里，电脑上运行 sub2obsidian sync 即可采集。\"}"
+                }
+            },
+            {
+                "message_id": "om_8f2a0c1d3e4b5a6978c0d1e2f3a4b5c6",
+                "msg_type": "text",
+                "create_time": "1759900060123",
+                "update_time": "1759900060123",
+                "deleted": false,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "ou_7d8a6e6df7621556ce0d21922b676706",
+                    "id_type": "open_id",
+                    "sender_type": "user",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"text\": \"这个讲得好 [https://b23.tv/AbCd123](https://b23.tv/AbCd123)\"}"
+                }
+            },
+            {
+                "message_id": "om_1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e",
+                "msg_type": "image",
+                "create_time": "1759900120456",
+                "update_time": "1759900120456",
+                "deleted": false,
+                "updated": false,
+                "chat_id": "oc_5ad11d72b830411d72b836c20b7a4e1f",
+                "sender": {
+                    "id": "ou_7d8a6e6df7621556ce0d21922b676706",
+                    "id_type": "open_id",
+                    "sender_type": "user",
+                    "tenant_key": "736588c9260f175e"
+                },
+                "body": {
+                    "content": "{\"image_key\": \"img_v3_02ab_4adb3cc3-902b-4187-b0f1-842f67fd017g\"}"
+                }
+            }
+        ]
+    }
+}

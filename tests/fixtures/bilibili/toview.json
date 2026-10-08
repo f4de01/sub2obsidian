@@ -1,0 +1,33 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "count": 1,
+    "list": [
+      {
+        "aid": 1800003,
+        "videos": 1,
+        "tid": 201,
+        "tname": "科学科普",
+        "copyright": 1,
+        "pic": "http://i0.hdslb.com/bfs/archive/fedcba9876543210fedcba9876543210fedcba98.jpg",
+        "title": "10 分钟看懂 MCP 协议",
+        "pubdate": 1735689600,
+        "ctime": 1735689600,
+        "desc": "MCP 是什么、为什么火。",
+        "state": 0,
+        "duration": 600,
+        "rights": {"bp": 0, "elec": 0, "download": 0, "movie": 0, "pay": 0, "hd5": 0, "no_reprint": 1, "autoplay": 1, "ugc_pay": 0, "is_cooperation": 0, "ugc_pay_preview": 0, "no_background": 0},
+        "owner": {"mid": 50000005, "name": "讲协议的UP", "face": "https://i0.hdslb.com/bfs/face/member/noface.jpg"},
+        "stat": {"aid": 1800003, "view": 100, "danmaku": 0, "reply": 0, "favorite": 0, "coin": 0, "share": 0, "now_rank": 0, "his_rank": 0, "like": 0, "dislike": 0},
+        "dynamic": "",
+        "cid": 7654321,
+        "dimension": {"width": 1920, "height": 1080, "rotate": 0},
+        "bvid": "BV1Mc411P7Qr",
+        "progress": 0,
+        "add_at": 1727800000
+      }
+    ]
+  }
+}

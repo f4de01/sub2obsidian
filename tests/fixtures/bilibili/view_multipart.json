@@ -1,0 +1,160 @@
+{
+  "code": 0,
+  "message": "OK",
+  "ttl": 1,
+  "data": {
+    "bvid": "BV1bK411W797",
+    "aid": 498159642,
+    "videos": 23,
+    "pic": "http://i0.hdslb.com/bfs/archive/8fa400caf18b5aa2a399ea5d59037fa9816d4c97.png",
+    "title": "物语中的人物是如何吐槽自己的OP的",
+    "pubdate": 1589601697,
+    "desc": "DVD版OP剪辑\n不一样的物语\n槽点非常多\n求点赞投币收藏或转发，感激不尽！\n本视频包含的op：\n化物语5个op，伪物语3个op，猫物语黑白、倾物语、囮物语、鬼物语、恋物语、花物语、凭物语、2025年新增愚、抚、业、忍（持续更新中）\n历物语、终物语、伤物语和续终物语在第二弹：BV19a4y1i7Wo（未来计划都整合到本视频）\n封面作者id：2131660",
+    "duration": 2069,
+    "owner": {
+      "mid": 150259984,
+      "name": "打牌还是打桩"
+    },
+    "cid": 191557669,
+    "pages": [
+      {
+        "cid": 191557669,
+        "page": 1,
+        "part": "Staple Stable/战场原+羽川",
+        "duration": 91
+      },
+      {
+        "cid": 191559297,
+        "page": 2,
+        "part": "帰り道/894+羽川",
+        "duration": 98
+      },
+      {
+        "cid": 191559859,
+        "page": 3,
+        "part": "Ambivalent World/战场原+神原",
+        "duration": 98
+      },
+      {
+        "cid": 191558738,
+        "page": 4,
+        "part": "恋爱循环/抚子+咩咩",
+        "duration": 91
+      },
+      {
+        "cid": 191558309,
+        "page": 5,
+        "part": "sugar sweet nightmare/羽川+神原",
+        "duration": 95
+      },
+      {
+        "cid": 745713855,
+        "page": 6,
+        "part": "sugar sweet nightmare/班长+垃圾",
+        "duration": 91
+      },
+      {
+        "cid": 191563133,
+        "page": 7,
+        "part": "二言目/战场原+羽川",
+        "duration": 90
+      },
+      {
+        "cid": 191561989,
+        "page": 8,
+        "part": "marshmallow justice/战场原+羽川",
+        "duration": 91
+      },
+      {
+        "cid": 191560904,
+        "page": 9,
+        "part": "marshmallow justice/月火+抚子",
+        "duration": 91
+      },
+      {
+        "cid": 191564199,
+        "page": 10,
+        "part": "白金disco/月火+火怜",
+        "duration": 90
+      },
+      {
+        "cid": 191565291,
+        "page": 11,
+        "part": "perfect slumbers/骏河+894",
+        "duration": 88
+      },
+      {
+        "cid": 191566315,
+        "page": 12,
+        "part": "chocolate insomnia/战场原+羽川",
+        "duration": 91
+      },
+      {
+        "cid": 191567408,
+        "page": 13,
+        "part": "happy bite/小忍+894",
+        "duration": 91
+      },
+      {
+        "cid": 191568314,
+        "page": 14,
+        "part": "妄想特快/影缝+斧乃木",
+        "duration": 91
+      },
+      {
+        "cid": 191569096,
+        "page": 15,
+        "part": "white lies/扇+抚子",
+        "duration": 59
+      },
+      {
+        "cid": 191570388,
+        "page": 16,
+        "part": "木枯らしセンティメント/战场原+羽川",
+        "duration": 91
+      },
+      {
+        "cid": 191571671,
+        "page": 17,
+        "part": "the last day of my adolescence/扇+神原",
+        "duration": 91
+      },
+      {
+        "cid": 191572576,
+        "page": 18,
+        "part": "橙色薄荷/小忍+斧乃木",
+        "duration": 91
+      },
+      {
+        "cid": 28405596477,
+        "page": 19,
+        "part": "icecream°/不死鸟+前蛇神",
+        "duration": 90
+      },
+      {
+        "cid": 28407105531,
+        "page": 20,
+        "part": "caramel ribbon cursetard/老仓+逆抚子",
+        "duration": 90
+      },
+      {
+        "cid": 28407105568,
+        "page": 21,
+        "part": "caramel ribbon cursetard/月火+斧乃木",
+        "duration": 90
+      },
+      {
+        "cid": 28407105085,
+        "page": 22,
+        "part": "caramel ribbon cursetard//月火+斧乃木",
+        "duration": 90
+      },
+      {
+        "cid": 28407104886,
+        "page": 23,
+        "part": "caramel ribbon cursetard///月火+斧乃木",
+        "duration": 90
+      }
+    ]
+  }
+}
