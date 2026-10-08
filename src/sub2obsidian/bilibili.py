@@ -101,16 +101,30 @@ class BilibiliAdapter:
         cookies = self.credentials.cookies_file(PLATFORM)
         self._verify_login(cookies)
         bvid, number = bilibili_part(ref)
+        try:
+            info = self.client.video_info(ref.url, cookies)
+        except FetchFailed:
+            self._pages_including(bvid, number)  # 视频已删除、或没有这一P时抛 SourceUnavailable
+            raise
+        source = self._to_source(info)
+        # yt-dlp 给多P视频的 id 加上「_p序号」（单P视频就是 BV 号）：单P视频不必再问 view 接口
+        if number == 1 and info.get("id") == bvid:
+            return source
+        view, pages = self._pages_including(bvid, number)
+        if len(pages) == 1:
+            return source
+        # yt-dlp 给多P视频的标题也加了它自己的分P后缀：视频标题以 view 接口为准
+        return replace(source, **_part(view.get("title") or bvid, pages[number - 1]))
+
+    def _pages_including(
+        self, bvid: str, number: int
+    ) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+        """view 接口的视频信息与分P列表；视频不可用或没有第 number P 时抛 SourceUnavailable。"""
         view = self._view(bvid)
         pages = _pages(view)
         if number > len(pages):
             raise SourceUnavailable(f"该视频没有第 {number} P（共 {len(pages)} P）")
-        source = self._to_source(self.client.video_info(ref.url, cookies))
-        if len(pages) == 1:
-            return source
-        # yt-dlp 给多P视频的标题加了它自己的分P后缀：视频标题以 view 接口为准
-        title, duration, part = _part(view.get("title") or bvid, pages[number - 1])
-        return replace(source, title=title, duration=duration, part=part)
+        return view, pages
 
     def download_audio(self, ref: SourceRef, directory: Path) -> Path:
         # 公开视频的音频不需要登录；已登录时带上 cookie，降低被风控拦截的概率
@@ -140,7 +154,7 @@ class BilibiliAdapter:
         if list_id == WATCH_LATER.id:
             data = self._data("/x/v2/history/toview/web", {}, cookies)
             listed = [(_watch_later_item(item), item.get("videos")) for item in data.get("list") or []]
-            return FavoritesPage(self._expand(listed), None)
+            return FavoritesPage(self._one_per_part(listed), None)
         page = int(cursor or 1)
         params = {
             "media_id": list_id,
@@ -153,15 +167,15 @@ class BilibiliAdapter:
         data = self._data("/x/v3/fav/resource/list", params, cookies)
         medias = [media for media in data.get("medias") or [] if media.get("type") == VIDEO_MEDIA]
         listed = [(_favorite_media(media), media.get("page")) for media in medias]
-        return FavoritesPage(self._expand(listed), str(page + 1) if data.get("has_more") else None)
+        return FavoritesPage(self._one_per_part(listed), str(page + 1) if data.get("has_more") else None)
 
-    def _expand(self, listed: list[tuple[Favorite | None, int | None]]) -> list[Favorite]:
+    def _one_per_part(self, listed: list[tuple[Favorite | None, int | None]]) -> list[Favorite]:
         """（收藏, 分P数）→ 收藏，多P视频展开为每个分P一条；不是视频来源的（None）跳过。"""
         return [
             part
             for favorite, count in listed
             if favorite is not None
-            for part in self._listed_parts(favorite, count or 1)
+            for part in self._parts_of(favorite, count or 1)
         ]
 
     def _data(self, endpoint: str, params: dict[str, str], cookies: Path) -> dict[str, Any]:
@@ -202,16 +216,20 @@ class BilibiliAdapter:
             raise FetchFailed(f"{message}（{code}）")
         return view.get("data") or {}
 
-    def _listed_parts(self, favorite: Favorite, count: int) -> list[Favorite]:
+    def _parts_of(self, favorite: Favorite, count: int) -> list[Favorite]:
         """收藏列表中的多P视频展开为每个分P一条；单P视频与已失效的视频原样保留。"""
         if count <= 1 or favorite.unavailable is not None:
             return [favorite]
         bvid = favorite.ref.platform_id
+        try:
+            view = self._view(bvid)
+        except SourceUnavailable as error:  # 收藏夹还没标失效，视频其实已删除
+            return [replace(favorite, unavailable=str(error))]
         listed = []
-        for page in _pages(self._view(bvid)):
-            title, duration, part = _part(favorite.title, page)
-            ref = bilibili_ref(bvid, part.number)
-            listed.append(replace(favorite, ref=ref, title=title, duration=duration, part=part))
+        for page in _pages(view):
+            details = _part(favorite.title, page)
+            ref = bilibili_ref(bvid, details["part"].number)
+            listed.append(replace(favorite, ref=ref, **details))
         return listed
 
     def _to_source(self, info: dict[str, Any]) -> FetchedSource:
@@ -241,12 +259,19 @@ def _pages(view: dict[str, Any]) -> list[dict[str, Any]]:
     return view.get("pages") or [{"page": 1}]
 
 
-def _part(video_title: str, page: dict[str, Any]) -> tuple[str, int | None, VideoPart]:
-    """多P视频中一个分P的（标题, 时长, 分P）：标题为「视频标题 P序号 分P标题」。"""
+def _part(video_title: str, page: dict[str, Any]) -> dict[str, Any]:
+    """多P视频中一个分P的标题、时长与分P（采集结果与收藏的同名字段）。
+
+    标题为「视频标题 P序号 分P标题」，分P标题为空或与视频标题相同时省略。
+    """
     number = int(page["page"])
     name = " ".join((page.get("part") or "").split())
     title = f"{video_title} P{number}" + (f" {name}" if name and name != video_title else "")
-    return title, page.get("duration") or None, VideoPart(number, video_title)
+    return {
+        "title": title,
+        "duration": page.get("duration") or None,
+        "part": VideoPart(number, video_title),
+    }
 
 
 def _beijing_time(timestamp: int | None) -> str | None:

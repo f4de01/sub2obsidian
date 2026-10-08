@@ -79,18 +79,18 @@ def render(pending: Iterable[Source], previous: dict[str, Entry]) -> str:
     by_platform: dict[str, list[Source]] = {}
     for source in sorted(pending, key=lambda s: (s.meta["采集时间"], s.ref.platform_id)):
         by_platform.setdefault(source.ref.platform, []).append(source)
-    parts = [HEADER]
+    sections = [HEADER]
     if not by_platform:
-        parts.append("\n暂无待筛的来源。\n")
+        sections.append("\n暂无待筛的来源。\n")
     for platform in sorted(by_platform):
         sources = by_platform[platform]
-        parts.append(f"\n## {PLATFORM_NAMES.get(platform, platform)}（{len(sources)}）\n\n")
+        sections.append(f"\n## {PLATFORM_NAMES.get(platform, platform)}（{len(sources)}）\n\n")
         for group in _by_video(sources):
             if group[0].meta.get("分P"):
-                parts.append(_video(group, previous))
+                sections.append(_video(group, previous))
             else:
-                parts.append(_entry(group[0], previous.get(group[0].ref.key)))
-    return "".join(parts)
+                sections.append(_entry(group[0], previous))
+    return "".join(sections)
 
 
 def _by_video(sources: list[Source]) -> list[list[Source]]:
@@ -111,43 +111,58 @@ def _by_video(sources: list[Source]) -> list[list[Source]]:
     return groups
 
 
-def _video(parts: list[Source], previous: dict[str, Entry]) -> str:
-    """多P视频：一行视频信息与简介，其下每个分P一个勾选框。"""
-    first = parts[0]
+def _video(video_parts: list[Source], previous: dict[str, Entry]) -> str:
+    """多P视频：一行视频信息（作者、发布日期、简介是各分P共用的），其下每个分P一个勾选框。"""
+    first = video_parts[0]
     video_title = first.meta.get("视频标题") or ""
-    details = [
+    video = _joined(
         f"多P视频：{' '.join(video_title.split())}",
         first.meta.get("作者"),
-        (first.meta.get("发布时间") or "")[:10],
+        _date(first),
         f"[原视频]({bilibili_ref(bilibili_part(first.ref)[0]).url})",
-    ]
-    lines = ["- " + " · ".join(filter(None, details))]
+    )
+    lines = [f"- {video}"]
     if excerpt := _excerpt(first.description):
         lines.append(f"\t- 简介：{excerpt}")
-    text = "\n".join(lines) + "\n"
-    for source in parts:
+    for source in video_parts:
         title = source.title.removeprefix(video_title).strip() or f"P{source.meta['分P']}"
-        text += _entry(source, previous.get(source.ref.key), title=title, indent="\t")
-    return text
+        details = _joined(_duration(source.meta.get("时长")), _link(source))
+        lines += [f"\t{line}" for line in _checkbox(source, title, details, "", previous)]
+    return "\n".join(lines) + "\n"
 
 
-def _entry(
-    source: Source, previous: Entry | None, *, title: str | None = None, indent: str = ""
-) -> str:
-    """清单中的一条来源；分P（indent 非空）只列时长与链接，作者等写在它所属的视频那一行。"""
-    mark = "x" if previous and previous.checked else " "
-    title = " ".join((title or source.title).split())
-    details = [
-        None if indent else source.meta.get("作者"),
-        _duration(source.meta.get("时长")),
-        None if indent else (source.meta.get("发布时间") or "")[:10],
-        f"[原链接]({source.ref.url})",
-    ]
-    lines = [f"- [{mark}] {title} `{source.ref.key}`", "\t- " + " · ".join(filter(None, details))]
-    if not indent and (excerpt := _excerpt(source.description)):
+def _entry(source: Source, previous: dict[str, Entry]) -> str:
+    details = _joined(
+        source.meta.get("作者"), _duration(source.meta.get("时长")), _date(source), _link(source)
+    )
+    excerpt = _excerpt(source.description)
+    return "\n".join(_checkbox(source, source.title, details, excerpt, previous)) + "\n"
+
+
+def _checkbox(
+    source: Source, title: str, details: str, excerpt: str, previous: dict[str, Entry]
+) -> list[str]:
+    """一条来源：勾选框与标题、元数据行、简介摘要、建议栏；保留上次的勾选与建议。"""
+    entry = previous.get(source.ref.key)
+    mark = "x" if entry and entry.checked else " "
+    lines = [f"- [{mark}] {' '.join(title.split())} `{source.ref.key}`", f"\t- {details}"]
+    if excerpt:
         lines.append(f"\t- 简介：{excerpt}")
-    lines.append(f"\t- 建议：{previous.suggestion if previous else ''}".rstrip())
-    return "".join(f"{indent}{line}\n" for line in lines)
+    lines.append(f"\t- 建议：{entry.suggestion if entry else ''}".rstrip())
+    return lines
+
+
+def _joined(*items: str | None) -> str:
+    """元数据行：各项以「 · 」相连，缺的项省略。"""
+    return " · ".join(filter(None, items))
+
+
+def _date(source: Source) -> str:
+    return (source.meta.get("发布时间") or "")[:10]
+
+
+def _link(source: Source) -> str:
+    return f"[原链接]({source.ref.url})"
 
 
 def _duration(seconds: int | None) -> str | None:

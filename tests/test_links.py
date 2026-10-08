@@ -36,7 +36,9 @@ class FakeAdapter:
 
 
 def keys(url: str) -> list[tuple[str, str]]:
-    return [(ref.platform_id, ref.url) for ref in normalize(url, FakeAdapter().expand, FakeAdapter().parts)]
+    """规范化后的（平台内 ID, 规范链接）。"""
+    adapter = FakeAdapter()
+    return [(ref.platform_id, ref.url) for ref in normalize(url, adapter.expand, adapter.parts)]
 
 
 @pytest.mark.parametrize(
@@ -92,9 +94,9 @@ def test_bilibili_links_normalize_to_one_source_per_part(url: str, expected):
 
 
 def test_short_link_without_p_to_a_multi_part_video_expands_to_every_part():
-    refs = normalize("https://b23.tv/Whole01", FakeAdapter().expand, FakeAdapter().parts)
-
-    assert [ref.platform_id for ref in refs] == [BV] + [f"{BV}_p{n}" for n in range(2, 24)]
+    assert [key for key, _ in keys("https://b23.tv/Whole01")] == [BV] + [
+        f"{BV}_p{n}" for n in range(2, 24)
+    ]
 
 
 def test_part_count_is_only_asked_for_links_that_name_no_part():

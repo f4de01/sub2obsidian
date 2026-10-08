@@ -489,20 +489,44 @@ def test_first_part_of_a_multi_part_video_is_a_part_too(cookies):
     assert fetched.part == VideoPart(number=1, video_title=MULTI_TITLE)
 
 
-def test_single_part_video_has_no_part(cookies):
-    fetched = adapter(cookies, ReplayClient(info="ytdlp_info_no_login.json")).fetch(REF)
+def test_single_part_video_has_no_part_and_needs_no_view_request(cookies):
+    """单P视频的采集与以前一样：只靠 yt-dlp（带登录 cookie），不先问公开的 view 接口。"""
+    client = ReplayClient(info="ytdlp_info_no_login.json", view="nav_rate_limited.json")
+
+    fetched = adapter(cookies, client).fetch(REF)
 
     assert fetched.part is None
     assert fetched.title == "【官方 MV】Never Gonna Give You Up - Rick Astley"
+    assert not any("view" in request for request in client.requests)
+
+
+def test_part_of_a_video_that_turns_out_single_part_is_unavailable(cookies):
+    """yt-dlp 对单P视频的 `?p=2` 链接也照样给出唯一的那一P：以 view 的分P数为准。"""
+    client = ReplayClient(info="ytdlp_info_no_login.json")
+    ref = SourceRef("bilibili", "BV1GJ411x7h7_p2", f"{REF.url}?p=2")
+
+    with pytest.raises(SourceUnavailable, match="没有第 2 P（共 1 P）"):
+        adapter(cookies, client).fetch(ref)
+
+
+def test_multi_part_favorite_gone_on_the_platform_is_listed_as_unavailable(cookies):
+    """收藏夹没标失效、view 却说已删除：这条收藏登记为已失效，不让整页（和之后的回填）卡住。"""
+    client = ReplayClient(
+        fav_pages={"1": "fav_resources_multipart.json"}, view="view_unavailable.json"
+    )
+
+    page = adapter(cookies, client).favorites("1052622027", None)
+
+    [item] = page.items
+    assert item.ref == part_ref(1)
+    assert item.unavailable == "稿件不可见（62002）"
 
 
 def test_part_beyond_the_last_one_is_unavailable(cookies):
     client = ReplayClient(views=MULTI_VIEWS)
 
-    with pytest.raises(SourceUnavailable, match="没有第 24 P"):
+    with pytest.raises(SourceUnavailable, match="没有第 24 P（共 23 P）"):
         adapter(cookies, client).fetch(part_ref(24))
-
-    assert not any(request.startswith("yt-dlp") for request in client.requests)
 
 
 def test_audio_of_a_deleted_part_is_checked_against_its_video(cookies, tmp_path: Path):
