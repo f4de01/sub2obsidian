@@ -396,8 +396,10 @@ class HttpBilibiliClient:
     def _open(self, url: str, cookies: Path | None = None, *, follow: bool = True):
         handlers: list[urllib.request.BaseHandler] = []
         if cookies is not None:
+            # MozillaCookieJar.load 按系统默认编码打开文件，这里显式按 UTF-8 读
             jar = MozillaCookieJar(str(cookies))
-            jar.load(ignore_discard=True, ignore_expires=True)
+            with cookies.open(encoding="utf-8") as file:
+                jar._really_load(file, str(cookies), ignore_discard=True, ignore_expires=True)
             handlers.append(urllib.request.HTTPCookieProcessor(jar))
         if not follow:
             handlers.append(_NoRedirect())

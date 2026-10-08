@@ -124,7 +124,8 @@ def _expired(cookie: Cookie) -> bool:
 
 
 def _netscape(cookies: list[Cookie]) -> str:
-    lines = ["# Netscape HTTP Cookie File", "# 由 sub2obsidian 从其专用浏览器配置导出，勿外传", ""]
+    # 只写 ASCII：http.cookiejar 与 yt-dlp 按系统默认编码读取（中文 Windows 上是 GBK）
+    lines = ["# Netscape HTTP Cookie File", "# Exported by sub2obsidian from its own browser profile. Do not share.", ""]
     for cookie in cookies:
         domain = cookie["domain"]
         expires = cookie.get("expires", -1)

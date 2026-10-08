@@ -102,6 +102,17 @@ def test_cookies_file_exports_netscape_cookies_for_ytdlp(user_config):
     assert cookies["buvid3"].expires is None  # 会话 cookie
 
 
+def test_cookies_file_is_plain_ascii(user_config):
+    """http.cookiejar 与 yt-dlp 按系统默认编码读 cookies.txt（中文 Windows 上是 GBK）：文件里不能有非 ASCII 字符。"""
+    browser = FakeBrowser()
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("bilibili")
+
+    path = credentials.cookies_file("bilibili")
+
+    assert path.read_bytes().isascii()
+
+
 def test_cookies_are_read_from_the_profile_only_once_per_run(user_config):
     """一次 sync 会多次取 cookie：每个平台只启动一次浏览器。"""
     browser = FakeBrowser()
