@@ -248,6 +248,28 @@ def test_download_audio_uses_the_smallest_rendition_with_its_fallback_urls(tmp_p
     assert client.details == [(VIDEO.platform_id, COOKIE)]
 
 
+def test_download_audio_skips_video_only_dash_renditions(tmp_path: Path):
+    """真实作品详情里码率最低的往往是 dash 档：只有画面没有音轨，ffmpeg 提不出音频。"""
+    response = sample("video")
+    gears = response["aweme_detail"]["video"]["bit_rate"]
+    for gear in gears:
+        gear["format"] = "mp4"
+    smallest_mp4 = min(gears, key=lambda gear: gear["bit_rate"])
+    gears.append(
+        {
+            "gear_name": "540_2_1",
+            "bit_rate": 1,
+            "format": "dash",
+            "play_addr": {"url_list": ["https://v11-weba.douyinvod.com/fake/media-video-hvc1/"]},
+        }
+    )
+    client = ReplayClient(response)
+
+    adapter(client).download_audio(VIDEO, tmp_path)
+
+    assert client.audio_requests == [smallest_mp4["play_addr"]["url_list"]]
+
+
 def test_download_audio_without_renditions_uses_play_addr(tmp_path: Path):
     response = sample("video")
     response["aweme_detail"]["video"]["bit_rate"] = []
