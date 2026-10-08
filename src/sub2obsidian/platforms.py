@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from sub2obsidian.links import SourceRef
-from sub2obsidian.sources import Kind
+from sub2obsidian.sources import Kind, VideoPart
 from sub2obsidian.transcript import Transcript
 
 
@@ -56,6 +56,7 @@ class FetchedSource:
     cover: Asset | None = None
     transcript: Transcript | None = None  # 平台字幕；没有时为 None，留待 ASR
     article: Article | None = None  # 文章、图文的正文
+    part: VideoPart | None = None  # B站 多P视频的分P
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ class Favorite:
     duration: int | None = None  # 秒，仅视频
     description: str = ""
     unavailable: str | None = None  # 收藏里已显示为失效时的原因
+    part: VideoPart | None = None  # B站 多P视频的分P
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,15 @@ class PlatformAdapter(Protocol):
         不可用时抛 SourceUnavailable，可重试的失败抛 FetchFailed，缺少 ffmpeg 等本机工具时抛
         MissingTool。
         """
+        ...
+
+
+@runtime_checkable
+class MultiPartAdapter(PlatformAdapter, Protocol):
+    """视频可以有多个分P的平台（B站）的适配器：每个分P是一条来源。"""
+
+    def count_parts(self, video_id: str) -> int:
+        """视频有几个分P；视频已删除或不可见时为 1（由采集判定已失效），可重试的失败抛 FetchFailed。"""
         ...
 
 

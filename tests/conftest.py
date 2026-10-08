@@ -117,6 +117,8 @@ class FakeBilibili(FakeFavorites):
     unavailable: dict[str, str] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
     short_links: dict[str, str] = field(default_factory=dict)
+    parts: dict[str, int] = field(default_factory=dict)  # BV 号 → 分P数；不在其中的视频为单P
+    part_failures: dict[str, str] = field(default_factory=dict)  # BV 号 → 查分P数失败的原因（只失败一次）
     fetched: list[str] = field(default_factory=list)
     audio_failures: dict[str, str] = field(default_factory=dict)
     audio_unavailable: dict[str, str] = field(default_factory=dict)
@@ -129,6 +131,11 @@ class FakeBilibili(FakeFavorites):
         if url not in self.short_links:
             raise FetchFailed(f"短链解析失败：{url}")
         return self.short_links[url]
+
+    def count_parts(self, bvid: str) -> int:
+        if bvid in self.part_failures:
+            raise FetchFailed(self.part_failures.pop(bvid))
+        return self.parts.get(bvid, 1)
 
     def fetch(self, ref: SourceRef) -> FetchedSource:
         self.credentials.cookies_file(self.platform)

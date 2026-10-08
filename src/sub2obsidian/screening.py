@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sub2obsidian.batch import Outcome, changed_sources, label
 from sub2obsidian.files import write_text_atomically
-from sub2obsidian.links import PLATFORM_NAMES, SourceRef
+from sub2obsidian.links import PLATFORM_NAMES, SourceRef, bilibili_part, bilibili_ref
 from sub2obsidian.sources import Source, SourceRepository, Status
 from sub2obsidian.vault import SCREENING_LIST
 
@@ -85,25 +85,69 @@ def render(pending: Iterable[Source], previous: dict[str, Entry]) -> str:
     for platform in sorted(by_platform):
         sources = by_platform[platform]
         parts.append(f"\n## {PLATFORM_NAMES.get(platform, platform)}（{len(sources)}）\n\n")
-        for source in sources:
-            parts.append(_entry(source, previous.get(source.ref.key)))
+        for group in _by_video(sources):
+            if group[0].meta.get("分P"):
+                parts.append(_video(group, previous))
+            else:
+                parts.append(_entry(group[0], previous.get(group[0].ref.key)))
     return "".join(parts)
 
 
-def _entry(source: Source, previous: Entry | None) -> str:
-    mark = "x" if previous and previous.checked else " "
-    title = " ".join(source.title.split())
+def _by_video(sources: list[Source]) -> list[list[Source]]:
+    """B站 多P视频的分P归为一组（排在其中最先登记的分P处，组内按分P序号），其余来源各自一组。"""
+    groups: list[list[Source]] = []
+    videos: dict[str, list[Source]] = {}
+    for source in sources:
+        if not source.meta.get("分P"):
+            groups.append([source])
+            continue
+        video = bilibili_part(source.ref)[0]
+        if video not in videos:
+            videos[video] = []
+            groups.append(videos[video])
+        videos[video].append(source)
+    for group in videos.values():
+        group.sort(key=lambda s: s.meta["分P"])
+    return groups
+
+
+def _video(parts: list[Source], previous: dict[str, Entry]) -> str:
+    """多P视频：一行视频信息与简介，其下每个分P一个勾选框。"""
+    first = parts[0]
+    video_title = first.meta.get("视频标题") or ""
     details = [
-        source.meta.get("作者"),
+        f"多P视频：{' '.join(video_title.split())}",
+        first.meta.get("作者"),
+        (first.meta.get("发布时间") or "")[:10],
+        f"[原视频]({bilibili_ref(bilibili_part(first.ref)[0]).url})",
+    ]
+    lines = ["- " + " · ".join(filter(None, details))]
+    if excerpt := _excerpt(first.description):
+        lines.append(f"\t- 简介：{excerpt}")
+    text = "\n".join(lines) + "\n"
+    for source in parts:
+        title = source.title.removeprefix(video_title).strip() or f"P{source.meta['分P']}"
+        text += _entry(source, previous.get(source.ref.key), title=title, indent="\t")
+    return text
+
+
+def _entry(
+    source: Source, previous: Entry | None, *, title: str | None = None, indent: str = ""
+) -> str:
+    """清单中的一条来源；分P（indent 非空）只列时长与链接，作者等写在它所属的视频那一行。"""
+    mark = "x" if previous and previous.checked else " "
+    title = " ".join((title or source.title).split())
+    details = [
+        None if indent else source.meta.get("作者"),
         _duration(source.meta.get("时长")),
-        (source.meta.get("发布时间") or "")[:10],
+        None if indent else (source.meta.get("发布时间") or "")[:10],
         f"[原链接]({source.ref.url})",
     ]
     lines = [f"- [{mark}] {title} `{source.ref.key}`", "\t- " + " · ".join(filter(None, details))]
-    if excerpt := _excerpt(source.description):
+    if not indent and (excerpt := _excerpt(source.description)):
         lines.append(f"\t- 简介：{excerpt}")
     lines.append(f"\t- 建议：{previous.suggestion if previous else ''}".rstrip())
-    return "\n".join(lines) + "\n"
+    return "".join(f"{indent}{line}\n" for line in lines)
 
 
 def _duration(seconds: int | None) -> str | None:

@@ -17,6 +17,7 @@ from sub2obsidian.bilibili import BilibiliAdapter, HttpBilibiliClient
 from sub2obsidian.credentials import LoginRequired
 from sub2obsidian.links import SourceRef
 from sub2obsidian.platforms import FetchFailed, SourceUnavailable
+from sub2obsidian.sources import VideoPart
 from sub2obsidian.tools import MissingTool
 
 FIXTURES = Path(__file__).parent / "fixtures" / "bilibili"
@@ -50,6 +51,7 @@ class ReplayClient:
     info_error: str | None = None
     nav: str = "nav_logged_in.json"
     view: str = "view_ok.json"
+    views: dict[str, str] = field(default_factory=dict)  # BV 号 → 该视频的 view 样本；其余用 view
     audio_error: str | None = None
     folders: str = "fav_folders.json"
     fav_pages: dict[str, str] = field(
@@ -68,6 +70,8 @@ class ReplayClient:
         self.requests.append(f"api {endpoint} {params}")
         if endpoint == "/x/v3/fav/resource/list":
             return fixture(self.fav_pages[params["pn"]])
+        if endpoint == "/x/web-interface/view":
+            return fixture(self.views.get(params["bvid"], self.view))
         return fixture(
             {
                 "/x/web-interface/nav": self.nav,
@@ -418,3 +422,126 @@ def test_requests_are_spaced_by_at_least_the_shortest_interval(monkeypatch: pyte
 
     # 第一个请求不等，之后的两个各自至少等足最短间隔（只断言下限，机器再慢也不误报）
     assert elapsed >= 2 * 0.5
+
+
+# ---- 多P视频：每个分P是一条来源；view_multipart.json 与 ytdlp_info_part2_no_login.json 为录制样本 ----
+
+MULTI = "BV1bK411W797"  # 23P
+MULTI_TITLE = "物语中的人物是如何吐槽自己的OP的"
+MULTI_VIEWS = {MULTI: "view_multipart.json"}
+
+
+def part_ref(n: int) -> SourceRef:
+    url = f"https://www.bilibili.com/video/{MULTI}"
+    if n == 1:
+        return SourceRef("bilibili", MULTI, url)
+    return SourceRef("bilibili", f"{MULTI}_p{n}", f"{url}?p={n}")
+
+
+def test_part_count_comes_from_the_public_view_api_without_login():
+    client = ReplayClient(views=MULTI_VIEWS)
+
+    assert adapter(None, client).count_parts(MULTI) == 23
+    assert adapter(None, client).count_parts("BV1GJ411x7h7") == 1
+    assert client.requests == [
+        f"api /x/web-interface/view {{'bvid': '{MULTI}'}}",
+        "api /x/web-interface/view {'bvid': 'BV1GJ411x7h7'}",
+    ]
+
+
+def test_part_count_of_a_deleted_video_is_one_so_that_capture_marks_it_unavailable():
+    client = ReplayClient(view="view_unavailable.json")
+
+    assert adapter(None, client).count_parts("BV1GJ411x7h7") == 1
+
+
+def test_part_count_blocked_by_rate_limiting_is_retryable():
+    client = ReplayClient(view="nav_rate_limited.json")
+
+    with pytest.raises(FetchFailed, match="请求被拦截（-412）"):
+        adapter(None, client).count_parts(MULTI)
+
+
+def test_fetching_a_part_takes_its_title_and_duration_from_that_part(cookies):
+    client = ReplayClient(info="ytdlp_info_part2_no_login.json", views=MULTI_VIEWS)
+
+    fetched = adapter(cookies, client).fetch(part_ref(2))
+
+    assert fetched.title == f"{MULTI_TITLE} P2 帰り道/894+羽川"
+    assert fetched.duration == 98
+    assert fetched.part == VideoPart(number=2, video_title=MULTI_TITLE)
+    assert fetched.author == "打牌还是打桩"
+    assert fetched.published == "2020-05-16T12:01:37+08:00"
+    assert fetched.description.startswith("DVD版OP剪辑")
+    # 字幕按分P：yt-dlp 打开的是带 p 的链接
+    assert f"yt-dlp https://www.bilibili.com/video/{MULTI}?p=2 cookies=bilibili.cookies.txt" in (
+        client.requests
+    )
+
+
+def test_first_part_of_a_multi_part_video_is_a_part_too(cookies):
+    client = ReplayClient(info="ytdlp_info_part2_no_login.json", views=MULTI_VIEWS)
+
+    fetched = adapter(cookies, client).fetch(part_ref(1))
+
+    assert fetched.title == f"{MULTI_TITLE} P1 Staple Stable/战场原+羽川"
+    assert fetched.duration == 91
+    assert fetched.part == VideoPart(number=1, video_title=MULTI_TITLE)
+
+
+def test_single_part_video_has_no_part(cookies):
+    fetched = adapter(cookies, ReplayClient(info="ytdlp_info_no_login.json")).fetch(REF)
+
+    assert fetched.part is None
+    assert fetched.title == "【官方 MV】Never Gonna Give You Up - Rick Astley"
+
+
+def test_part_beyond_the_last_one_is_unavailable(cookies):
+    client = ReplayClient(views=MULTI_VIEWS)
+
+    with pytest.raises(SourceUnavailable, match="没有第 24 P"):
+        adapter(cookies, client).fetch(part_ref(24))
+
+    assert not any(request.startswith("yt-dlp") for request in client.requests)
+
+
+def test_audio_of_a_deleted_part_is_checked_against_its_video(cookies, tmp_path: Path):
+    client = ReplayClient(audio_error="ytdlp_error_unavailable.txt", view="view_unavailable.json")
+
+    with pytest.raises(SourceUnavailable):
+        adapter(cookies, client).download_audio(part_ref(3), tmp_path)
+
+    assert f"api /x/web-interface/view {{'bvid': '{MULTI}'}}" in client.requests
+
+
+def test_multi_part_favorite_is_listed_as_one_favorite_per_part(cookies):
+    client = ReplayClient(fav_pages={"1": "fav_resources_multipart.json"}, views=MULTI_VIEWS)
+
+    page = adapter(cookies, client).favorites("1052622027", None)
+
+    assert [item.ref for item in page.items] == [part_ref(n) for n in range(1, 24)]
+    second = page.items[1]
+    assert second.title == f"{MULTI_TITLE} P2 帰り道/894+羽川"
+    assert second.duration == 98
+    assert second.part == VideoPart(number=2, video_title=MULTI_TITLE)
+    assert second.author == "打牌还是打桩"
+    assert second.description.startswith("DVD版OP剪辑")
+    assert second.unavailable is None
+
+
+def test_multi_part_video_in_watch_later_is_listed_per_part(cookies):
+    client = ReplayClient(toview="toview_multipart.json", views=MULTI_VIEWS)
+
+    page = adapter(cookies, client).favorites("toview", None)
+
+    assert [item.ref.platform_id for item in page.items][:3] == [MULTI, f"{MULTI}_p2", f"{MULTI}_p3"]
+    assert len(page.items) == 23
+    assert page.items[22].title == f"{MULTI_TITLE} P23 caramel ribbon cursetard///月火+斧乃木"
+
+
+def test_single_part_favorites_need_no_extra_request(cookies):
+    client = ReplayClient()
+
+    adapter(cookies, client).favorites("1052622027", "2")
+
+    assert not any("view" in request for request in client.requests)

@@ -1,0 +1,56 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "info": {
+      "id": 1052622027,
+      "fid": 10526220,
+      "mid": 10000001,
+      "attr": 0,
+      "title": "默认收藏夹",
+      "media_count": 1
+    },
+    "medias": [
+      {
+        "id": 498159642,
+        "type": 2,
+        "title": "物语中的人物是如何吐槽自己的OP的",
+        "cover": "http://i0.hdslb.com/bfs/archive/8fa400caf18b5aa2a399ea5d59037fa9816d4c97.png",
+        "intro": "DVD版OP剪辑\n不一样的物语\n槽点非常多\n求点赞投币收藏或转发，感激不尽！\n本视频包含的op：\n化物语5个op，伪物语3个op，猫物语黑白、倾物语、囮物语、鬼物语、恋物语、花物语、凭物语、2025年新增愚、抚、业、忍（持续更新中）\n历物语、终物语、伤物语和续终物语在第二弹：BV19a4y1i7Wo（未来计划都整合到本视频）\n封面作者id：2131660",
+        "page": 23,
+        "duration": 2069,
+        "upper": {
+          "mid": 150259984,
+          "name": "打牌还是打桩",
+          "face": "https://i0.hdslb.com/bfs/face/member/noface.jpg",
+          "jump_link": ""
+        },
+        "attr": 0,
+        "cnt_info": {
+          "collect": 10,
+          "play": 100,
+          "danmaku": 1,
+          "vt": 0,
+          "play_switch": 0,
+          "reply": 0,
+          "view_text_1": "100"
+        },
+        "link": "bilibili://video/498159642",
+        "ctime": 1589601697,
+        "pubtime": 1589601697,
+        "fav_time": 1727400000,
+        "bv_id": "BV1bK411W797",
+        "bvid": "BV1bK411W797",
+        "season": null,
+        "ogv": null,
+        "ugc": {
+          "first_cid": 191557669
+        },
+        "media_list_link": "bilibili://music/playlist/playpage/1?page_type=3&oid=498159642&otype=2"
+      }
+    ],
+    "has_more": false,
+    "ttl": 1727712345
+  }
+}

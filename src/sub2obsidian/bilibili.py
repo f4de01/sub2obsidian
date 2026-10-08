@@ -1,9 +1,13 @@
 """B站 平台适配器：基于 yt-dlp 采集视频元数据、封面与平台字幕（CC 或 AI 字幕，需登录），
 并为没有字幕的视频下载供转写的音频（需要 ffmpeg）。
 
-拉取时列出用户的全部收藏夹与稍后再看，只取元数据。所用的是 yt-dlp 的 B站 收藏夹、稍后再看
-提取器调用的同一组接口（fav/resource、toview），但直接按页读取：yt-dlp 的提取器只给出
-BV 号，要拿标题、简介、时长得逐个视频再解析一遍，回填几千条收藏时请求量会翻几倍。
+多P视频的每个分P是一条来源：分P数、分P标题与时长取自公开的 view 接口（不需要登录），
+采集与下载音频时 yt-dlp 打开的是该分P的链接，字幕也就按分P。
+
+拉取时列出用户的全部收藏夹与稍后再看，只取元数据，其中的多P视频展开为每个分P一条。所用的是
+yt-dlp 的 B站 收藏夹、稍后再看提取器调用的同一组接口（fav/resource、toview），但直接按页读取：
+yt-dlp 的提取器只给出 BV 号，要拿标题、简介、时长得逐个视频再解析一遍，回填几千条收藏时
+请求量会翻几倍。
 
 网络层（BilibiliClient）与解析分开：契约测试用录制样本回放网络层，验证解析与判定。
 """
@@ -16,13 +20,14 @@ import random
 import time
 import urllib.error
 import urllib.request
+from dataclasses import replace
 from http.cookiejar import MozillaCookieJar
 from pathlib import Path, PurePosixPath
 from typing import Any, Protocol
 from urllib.parse import urlencode, urljoin, urlsplit
 
 from sub2obsidian.credentials import CredentialProvider, LoginRequired
-from sub2obsidian.links import SourceRef, UnsupportedLink, bilibili_ref
+from sub2obsidian.links import SourceRef, UnsupportedLink, bilibili_part, bilibili_ref
 from sub2obsidian.platforms import (
     Asset,
     Favorite,
@@ -32,7 +37,7 @@ from sub2obsidian.platforms import (
     FetchFailed,
     SourceUnavailable,
 )
-from sub2obsidian.sources import Kind
+from sub2obsidian.sources import Kind, VideoPart
 from sub2obsidian.tools import require_ffmpeg
 from sub2obsidian.transcript import Transcript, parse_srt
 
@@ -86,15 +91,26 @@ class BilibiliAdapter:
     def expand_short_link(self, url: str) -> str:
         return self.client.redirect_target(url)
 
+    def count_parts(self, video_id: str) -> int:
+        try:
+            return len(_pages(self._view(video_id)))
+        except SourceUnavailable:
+            return 1  # 采集时再判定为已失效
+
     def fetch(self, ref: SourceRef) -> FetchedSource:
         cookies = self.credentials.cookies_file(PLATFORM)
         self._verify_login(cookies)
-        try:
-            info = self.client.video_info(ref.url, cookies)
-        except FetchFailed:
-            self._raise_if_unavailable(ref)
-            raise
-        return self._to_source(info)
+        bvid, number = bilibili_part(ref)
+        view = self._view(bvid)
+        pages = _pages(view)
+        if number > len(pages):
+            raise SourceUnavailable(f"该视频没有第 {number} P（共 {len(pages)} P）")
+        source = self._to_source(self.client.video_info(ref.url, cookies))
+        if len(pages) == 1:
+            return source
+        # yt-dlp 给多P视频的标题加了它自己的分P后缀：视频标题以 view 接口为准
+        title, duration, part = _part(view.get("title") or bvid, pages[number - 1])
+        return replace(source, title=title, duration=duration, part=part)
 
     def download_audio(self, ref: SourceRef, directory: Path) -> Path:
         # 公开视频的音频不需要登录；已登录时带上 cookie，降低被风控拦截的概率
@@ -105,7 +121,7 @@ class BilibiliAdapter:
         try:
             return self.client.download_audio(ref.url, directory, cookies)
         except FetchFailed:
-            self._raise_if_unavailable(ref)
+            self._view(bilibili_part(ref)[0])  # 视频已删除或不可见时抛 SourceUnavailable
             raise
 
     def favorite_lists(self) -> list[FavoriteList]:
@@ -123,8 +139,8 @@ class BilibiliAdapter:
         self._verify_login(cookies)
         if list_id == WATCH_LATER.id:
             data = self._data("/x/v2/history/toview/web", {}, cookies)
-            items = [_watch_later_item(item) for item in data.get("list") or []]
-            return FavoritesPage([item for item in items if item is not None], None)
+            listed = [(_watch_later_item(item), item.get("videos")) for item in data.get("list") or []]
+            return FavoritesPage(self._expand(listed), None)
         page = int(cursor or 1)
         params = {
             "media_id": list_id,
@@ -136,11 +152,17 @@ class BilibiliAdapter:
         }
         data = self._data("/x/v3/fav/resource/list", params, cookies)
         medias = [media for media in data.get("medias") or [] if media.get("type") == VIDEO_MEDIA]
-        items = [_favorite_media(media) for media in medias]
-        return FavoritesPage(
-            [item for item in items if item is not None],
-            str(page + 1) if data.get("has_more") else None,
-        )
+        listed = [(_favorite_media(media), media.get("page")) for media in medias]
+        return FavoritesPage(self._expand(listed), str(page + 1) if data.get("has_more") else None)
+
+    def _expand(self, listed: list[tuple[Favorite | None, int | None]]) -> list[Favorite]:
+        """（收藏, 分P数）→ 收藏，多P视频展开为每个分P一条；不是视频来源的（None）跳过。"""
+        return [
+            part
+            for favorite, count in listed
+            if favorite is not None
+            for part in self._listed_parts(favorite, count or 1)
+        ]
 
     def _data(self, endpoint: str, params: dict[str, str], cookies: Path) -> dict[str, Any]:
         """需要登录的接口的 data；登录失效抛 LoginRequired，其他错误码可重试。"""
@@ -166,11 +188,31 @@ class BilibiliAdapter:
         self._mid = int(data.get("mid") or 0)
         return self._mid
 
-    def _raise_if_unavailable(self, ref: SourceRef) -> None:
-        view = self.client.api("/x/web-interface/view", {"bvid": ref.platform_id})
+    def _view(self, bvid: str) -> dict[str, Any]:
+        """公开的 view 接口给出的视频信息（含分P列表），不需要登录。
+
+        视频已删除或不可见时抛 SourceUnavailable，其他错误码（审核中、风控）抛 FetchFailed。
+        """
+        view = self.client.api("/x/web-interface/view", {"bvid": bvid})
         code = view.get("code")
+        message = view.get("message") or "稿件不可用"
         if code in UNAVAILABLE_CODES:
-            raise SourceUnavailable(f"{view.get('message') or '稿件不可用'}（{code}）")
+            raise SourceUnavailable(f"{message}（{code}）")
+        if code != 0:
+            raise FetchFailed(f"{message}（{code}）")
+        return view.get("data") or {}
+
+    def _listed_parts(self, favorite: Favorite, count: int) -> list[Favorite]:
+        """收藏列表中的多P视频展开为每个分P一条；单P视频与已失效的视频原样保留。"""
+        if count <= 1 or favorite.unavailable is not None:
+            return [favorite]
+        bvid = favorite.ref.platform_id
+        listed = []
+        for page in _pages(self._view(bvid)):
+            title, duration, part = _part(favorite.title, page)
+            ref = bilibili_ref(bvid, part.number)
+            listed.append(replace(favorite, ref=ref, title=title, duration=duration, part=part))
+        return listed
 
     def _to_source(self, info: dict[str, Any]) -> FetchedSource:
         duration = info.get("duration")
@@ -192,6 +234,19 @@ class BilibiliAdapter:
             url = "https://" + url.removeprefix("http://")
         suffix = PurePosixPath(urlsplit(url).path).suffix.lower() or ".jpg"
         return Asset(name=f"封面{suffix}", data=self.client.download(url))
+
+
+def _pages(view: dict[str, Any]) -> list[dict[str, Any]]:
+    """view 接口中的分P列表；单P视频只有一项。"""
+    return view.get("pages") or [{"page": 1}]
+
+
+def _part(video_title: str, page: dict[str, Any]) -> tuple[str, int | None, VideoPart]:
+    """多P视频中一个分P的（标题, 时长, 分P）：标题为「视频标题 P序号 分P标题」。"""
+    number = int(page["page"])
+    name = " ".join((page.get("part") or "").split())
+    title = f"{video_title} P{number}" + (f" {name}" if name and name != video_title else "")
+    return title, page.get("duration") or None, VideoPart(number, video_title)
 
 
 def _beijing_time(timestamp: int | None) -> str | None:

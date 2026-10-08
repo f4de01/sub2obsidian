@@ -11,6 +11,8 @@
 | `ytdlp_info_with_subtitles.json` | 构造 | 在录制样本上加入 CC（zh-CN）与 AI（ai-zh）字幕；字幕形态按 yt-dlp `BilibiliBaseIE.json2srt` 内嵌 SRT |
 | `ytdlp_info_ai_subtitles_only.json` | 构造 | 同上，只有 AI 字幕 |
 | `ytdlp_info_logged_in.json` | 构造（待 #12 替换） | 登录后 info 的占位样本 |
+| `view_multipart.json` | 录制（2026-10，未登录） | 23P 的公开视频 BV1bK411W797 的 view 响应，只保留标题、简介、UP主、发布时间与分P列表（`pages`：序号、分P标题、时长） |
+| `ytdlp_info_part2_no_login.json` | 录制（2026-10，未登录） | yt-dlp 对同一视频 `?p=2` 的 info（按录制脚本的 `KEEP` 裁剪）：yt-dlp 给多P视频的标题加了自己的 `p02 <分P标题>` 后缀，所以适配器以 view 接口的标题与分P为准 |
 
 字幕接口需要登录，录制不了真实样本，所以 `nav_logged_in.json` 与 `ytdlp_info_logged_in.json` 先用构造样本。
 #12 人工验收时登录后运行 `uv run python scripts/record_bilibili_fixtures.py <带字幕的BV号>` 覆盖这两份，契约测试应仍然通过。
@@ -28,3 +30,5 @@
 | `fav_resources_page2.json` | 同上，`pn=2` | 最后一页（`has_more: false`） |
 | `fav_resources_private.json` | 同上 | 错误码 `-403 访问权限不足`：可重试的失败 |
 | `toview.json` | `x/v2/history/toview/web` | 稍后再看（一次返回全部） |
+| `fav_resources_multipart.json` | `x/v3/fav/resource/list` | 收藏夹里的一个多P视频（`page: 23`），视频信息取自 `view_multipart.json` |
+| `toview_multipart.json` | `x/v2/history/toview/web` | 稍后再看里的同一个多P视频（`videos: 23`） |

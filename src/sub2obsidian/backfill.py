@@ -161,6 +161,7 @@ def _register(repo: SourceRepository, item: Favorite) -> Outcome:
         duration=item.duration,
         description=item.description,
         cover=None,
+        part=item.part,
     )
     if item.unavailable is not None:
         repo.transition(source, Status.UNAVAILABLE, reason=item.unavailable)

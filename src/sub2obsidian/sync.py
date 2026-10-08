@@ -102,7 +102,7 @@ def _read_inbox(
     retry: list[str] = []
     for url in dict.fromkeys(links):
         try:
-            source, created = register(url, repo, adapters)
+            registered = register(url, repo, adapters)
         except FetchFailed as error:
             retry.append(url)
             yield Outcome(f"{error}（下次 sync 重试）", ok=False)
@@ -110,9 +110,10 @@ def _read_inbox(
         except (UnsupportedLink, AdapterError) as error:
             yield Outcome(str(error), ok=False)
             continue
-        if created:
-            yield Outcome(f"新来源：{source.ref.display}", ok=True, changed=source, new=True)
-        elif source.status is not Status.APPROVED:
-            yield already_registered(source)
+        for source, created in registered:
+            if created:
+                yield Outcome(f"新来源：{source.ref.display}", ok=True, changed=source, new=True)
+            elif source.status is not Status.APPROVED:
+                yield already_registered(source)
     # 消息已全部变成来源（或待重试的链接）之后才前移游标：中途出错时下次重读，登记去重
     InboxState(cursor, retry).save(state_file)

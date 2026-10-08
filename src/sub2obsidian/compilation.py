@@ -40,7 +40,8 @@ def _ref_of(name: str) -> SourceRef | None:
     """
     if extract_urls(name) == [name]:
         try:
-            return normalize(name, _no_expansion)
+            # 不带 p 的 B站 链接就是单P视频或第 1 P 的规范链接：不展开为全部分P
+            return normalize(name, _no_expansion, _no_part_listing)[0]
         except UnsupportedLink:
             return None
     parts = [part for part in name.replace("\\", "/").split("/") if part]
@@ -50,6 +51,10 @@ def _ref_of(name: str) -> SourceRef | None:
         return None
     # 来源目录只由「平台 + 平台内 ID」决定，查找时用不到规范链接
     return SourceRef(parts[-2], parts[-1], "")
+
+
+def _no_part_listing(platform: str, video: str) -> int:
+    return 1
 
 
 class Refused(ValueError):

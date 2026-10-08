@@ -55,6 +55,9 @@ _AWEME_ID = r"(\d{15,21})"
 
 # expand(platform, url)：由该平台的适配器把短链解析为完整链接（需要网络）。
 Expander = Callable[[str, str], str]
+# parts(platform, video_id)：由该平台的适配器查出视频有几个分P（需要网络）；
+# 只对没指明分P的 B站 链接调用。
+PartCounter = Callable[[str, str], int]
 
 
 def extract_urls(text: str) -> list[str]:
@@ -62,39 +65,56 @@ def extract_urls(text: str) -> list[str]:
     return list(dict.fromkeys(match.rstrip(".,;:!?)") for match in _URL.findall(text)))
 
 
-def _bilibili_ref(bv_suffix: str) -> SourceRef:
-    """BV 号统一为大写 BV 前缀；规范链接不带任何查询参数与锚点。"""
-    bvid = "BV" + bv_suffix
-    return SourceRef("bilibili", bvid, f"https://www.bilibili.com/video/{bvid}")
+def bilibili_ref(bvid: str, part: int = 1) -> SourceRef:
+    """B站 视频（的一个分P）→ 来源身份；不是 BV 号时抛 UnsupportedLink。
 
-
-def bilibili_ref(bvid: str) -> SourceRef:
-    """BV 号 → 来源身份；不是 BV 号时抛 UnsupportedLink。"""
+    多P视频的每个分P是一条来源：第 1 P（以及单P视频）的平台内 ID 就是 BV 号，规范链接不带
+    参数；第 N P（N≥2）为「BV号_pN」，规范链接带 `?p=N`。BV 号统一为大写 BV 前缀。
+    """
     match = _BV.fullmatch(bvid)
     if not match:
         raise UnsupportedLink(f"不是 B站 视频的 BV 号：{bvid}")
-    return _bilibili_ref(match.group(1))
+    bvid = "BV" + match.group(1)
+    url = f"https://www.bilibili.com/video/{bvid}"
+    if part == 1:
+        return SourceRef("bilibili", bvid, url)
+    return SourceRef("bilibili", f"{bvid}_p{part}", f"{url}?p={part}")
 
 
-def _bilibili_video(url: str) -> SourceRef | None:
-    parts = urlsplit(url)
-    if (parts.hostname or "").lower() not in _BILIBILI_HOSTS:
+def bilibili_part(ref: SourceRef) -> tuple[str, int]:
+    """B站 来源 → （BV 号, 分P序号）。"""
+    bvid, _, part = ref.platform_id.partition("_p")
+    return bvid, int(part) if part else 1
+
+
+def _bilibili_parts(bv_suffix: str, query: str, parts: PartCounter) -> list[SourceRef]:
+    """链接指明了分P（`?p=N`）就只是那一P；没指明时展开为该视频的全部分P。"""
+    bvid = "BV" + bv_suffix
+    part = (parse_qs(query).get("p") or [""])[0]
+    if part.isdigit() and int(part) >= 1:
+        return [bilibili_ref(bvid, int(part))]
+    return [bilibili_ref(bvid, n) for n in range(1, parts("bilibili", bvid) + 1)]
+
+
+def _bilibili_video(url: str, parts: PartCounter) -> list[SourceRef] | None:
+    split = urlsplit(url)
+    if (split.hostname or "").lower() not in _BILIBILI_HOSTS:
         return None
-    match = re.fullmatch(r"/video/" + _BV.pattern + r"/?", parts.path)
+    match = re.fullmatch(r"/video/" + _BV.pattern + r"/?", split.path)
     if not match:
         raise UnsupportedLink(f"不是 B站 视频链接：{url}")
-    return _bilibili_ref(match.group(1))
+    return _bilibili_parts(match.group(1), split.query, parts)
 
 
-def _bilibili_short(url: str, expand: Expander) -> SourceRef:
-    path = urlsplit(url).path
-    if match := re.fullmatch(r"/" + _BV.pattern + r"/?", path):
-        return _bilibili_ref(match.group(1))
+def _bilibili_short(url: str, expand: Expander, parts: PartCounter) -> list[SourceRef]:
+    short = urlsplit(url)
+    if match := re.fullmatch(r"/" + _BV.pattern + r"/?", short.path):
+        return _bilibili_parts(match.group(1), short.query, parts)
     target = expand("bilibili", url)
-    ref = _bilibili_video(target)
-    if ref is None:
+    refs = _bilibili_video(target, parts)
+    if refs is None:
         raise UnsupportedLink(f"B站 短链没有指向视频：{url} → {target}")
-    return ref
+    return refs
 
 
 def _douyin_post(url: str) -> SourceRef | None:
@@ -182,19 +202,24 @@ def _wechat_article(url: str, expand: Expander) -> SourceRef:
     return SourceRef(ref.platform, ref.platform_id, short)
 
 
-def normalize(url: str, expand: Expander) -> SourceRef:
-    """把一个链接规范化为来源身份；无法识别时抛 UnsupportedLink。
+def normalize(url: str, expand: Expander, parts: PartCounter) -> list[SourceRef]:
+    """把一个链接规范化为它指向的来源；无法识别时抛 UnsupportedLink。
 
-    短链交给 expand 解析一次；规范链接不带任何查询参数与锚点。
+    短链交给 expand 解析一次；规范链接不带追踪参数与锚点。B站 多P视频的每个分P是一条来源：
+    链接指明分P（`?p=N`）时只是那一P，没指明时由 parts 查出分P数、展开为全部分P。
+    其他平台的链接只指向一条来源。
     """
     host = (urlsplit(url).hostname or "").lower()
     if SHORT_LINK_HOSTS.get(host) == "bilibili":
-        return _bilibili_short(url, expand)
+        return _bilibili_short(url, expand, parts)
     if SHORT_LINK_HOSTS.get(host) == "douyin":
-        return _douyin_short(url, expand)
+        return [_douyin_short(url, expand)]
     if host == WECHAT_HOST:
-        return _wechat_article(url, expand)
-    ref = _bilibili_video(url) or _douyin_post(url)
+        return [_wechat_article(url, expand)]
+    refs = _bilibili_video(url, parts)
+    if refs is not None:
+        return refs
+    ref = _douyin_post(url)
     if ref is None:
         raise UnsupportedLink(f"无法识别的链接：{url}")
-    return ref
+    return [ref]

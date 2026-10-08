@@ -46,6 +46,14 @@ class Origin(StrEnum):
     PUSH = "推送"
 
 
+@dataclass(frozen=True)
+class VideoPart:
+    """B站 多P视频中的一个分P；单P视频没有。"""
+
+    number: int  # 分P序号，从 1 起
+    video_title: str  # 整个视频的标题（来源标题是分P的标题）
+
+
 class IllegalTransition(ValueError):
     pass
 
@@ -86,6 +94,8 @@ FIELDS = [
     "署名",
     "发布时间",
     "时长",
+    "分P",  # B站 多P视频的分P序号；单P视频为空
+    "视频标题",  # B站 多P视频的整个视频的标题；单P视频为空
     "采集途径",
     "采集时间",
     "来源状态",
@@ -201,8 +211,9 @@ class SourceRepository:
         duration: int | None,
         description: str,
         cover: str | None,
+        part: VideoPart | None = None,
     ) -> None:
-        """写入采集到的元数据；封面为来源目录中的文件名。"""
+        """写入采集到的元数据；封面为来源目录中的文件名，part 为 B站 多P视频的分P。"""
         source.meta.update(
             {
                 "类型": str(kind),
@@ -211,6 +222,8 @@ class SourceRepository:
                 "署名": byline,
                 "发布时间": published,
                 "时长": duration,
+                "分P": part.number if part else None,
+                "视频标题": part.video_title if part else None,
             }
         )
         source.body = _body(title, description, cover)

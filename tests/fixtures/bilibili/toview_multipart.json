@@ -1,0 +1,66 @@
+{
+  "code": 0,
+  "message": "0",
+  "ttl": 1,
+  "data": {
+    "count": 1,
+    "list": [
+      {
+        "aid": 498159642,
+        "videos": 23,
+        "tid": 201,
+        "tname": "科学科普",
+        "copyright": 1,
+        "pic": "http://i0.hdslb.com/bfs/archive/8fa400caf18b5aa2a399ea5d59037fa9816d4c97.png",
+        "title": "物语中的人物是如何吐槽自己的OP的",
+        "pubdate": 1589601697,
+        "ctime": 1589601697,
+        "desc": "DVD版OP剪辑\n不一样的物语\n槽点非常多\n求点赞投币收藏或转发，感激不尽！\n本视频包含的op：\n化物语5个op，伪物语3个op，猫物语黑白、倾物语、囮物语、鬼物语、恋物语、花物语、凭物语、2025年新增愚、抚、业、忍（持续更新中）\n历物语、终物语、伤物语和续终物语在第二弹：BV19a4y1i7Wo（未来计划都整合到本视频）\n封面作者id：2131660",
+        "state": 0,
+        "duration": 2069,
+        "rights": {
+          "bp": 0,
+          "elec": 0,
+          "download": 0,
+          "movie": 0,
+          "pay": 0,
+          "hd5": 0,
+          "no_reprint": 1,
+          "autoplay": 1,
+          "ugc_pay": 0,
+          "is_cooperation": 0,
+          "ugc_pay_preview": 0,
+          "no_background": 0
+        },
+        "owner": {
+          "mid": 150259984,
+          "name": "打牌还是打桩",
+          "face": "https://i0.hdslb.com/bfs/face/member/noface.jpg"
+        },
+        "stat": {
+          "aid": 498159642,
+          "view": 100,
+          "danmaku": 0,
+          "reply": 0,
+          "favorite": 0,
+          "coin": 0,
+          "share": 0,
+          "now_rank": 0,
+          "his_rank": 0,
+          "like": 0,
+          "dislike": 0
+        },
+        "dynamic": "",
+        "cid": 191557669,
+        "dimension": {
+          "width": 1920,
+          "height": 1080,
+          "rotate": 0
+        },
+        "bvid": "BV1bK411W797",
+        "progress": 0,
+        "add_at": 1727800000
+      }
+    ]
+  }
+}

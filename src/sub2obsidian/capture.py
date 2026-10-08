@@ -9,12 +9,13 @@ from pathlib import Path
 from sub2obsidian import transcript
 from sub2obsidian.batch import Outcome
 from sub2obsidian.credentials import CredentialError
-from sub2obsidian.links import PLATFORM_NAMES, UnsupportedLink, extract_urls, normalize
+from sub2obsidian.links import PLATFORM_NAMES, SourceRef, UnsupportedLink, extract_urls, normalize
 from sub2obsidian.platforms import (
     AdapterError,
     Article,
     FetchedSource,
     FetchFailed,
+    MultiPartAdapter,
     PlatformAdapter,
     SourceUnavailable,
 )
@@ -54,10 +55,17 @@ def _capture_url(
     url: str, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
 ) -> Iterator[Outcome]:
     try:
-        source, created = register(url, repo, adapters)
+        registered = register(url, repo, adapters)
     except (UnsupportedLink, AdapterError) as error:
         yield Outcome(str(error), ok=False)
         return
+    for source, created in registered:
+        yield from _capture_source(source, created, repo, adapters)
+
+
+def _capture_source(
+    source: Source, created: bool, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
+) -> Iterator[Outcome]:
     if source.status is not Status.APPROVED:
         # 只有停在「已通过」的来源（上次采集失败）才重试
         yield already_registered(source)
@@ -77,14 +85,26 @@ def already_registered(source: Source) -> Outcome:
 
 def register(
     url: str, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
-) -> tuple[Source, bool]:
-    """把链接登记为推送来的来源（直接为「已通过」），返回来源及它是否为本次新建。
+) -> list[tuple[Source, bool]]:
+    """把链接指向的来源登记为推送来的来源（直接为「已通过」），返回每个来源及它是否为本次新建。
 
-    同一来源无论以哪种链接写法提交都只登记一份。拉取来、还在「待筛」的来源被推送时视为
-    用户已选中，转为「已通过」。链接无法识别时抛 UnsupportedLink，短链解析失败时抛
-    AdapterError（FetchFailed 可重试）。
+    B站 多P视频的链接不带 p 时指向全部分P。同一来源无论以哪种链接写法提交都只登记一份。
+    拉取来、还在「待筛」的来源被推送时视为用户已选中，转为「已通过」。链接无法识别时抛
+    UnsupportedLink，短链或分P数查不到时抛 AdapterError（FetchFailed 可重试）。
     """
-    ref = normalize(url, lambda platform, short: adapters[platform].expand_short_link(short))
+    refs = normalize(
+        url,
+        lambda platform, short: adapters[platform].expand_short_link(short),
+        lambda platform, video: _count_parts(adapters[platform], video),
+    )
+    return [_register_ref(ref, repo) for ref in refs]
+
+
+def _count_parts(adapter: PlatformAdapter, video: str) -> int:
+    return adapter.count_parts(video) if isinstance(adapter, MultiPartAdapter) else 1
+
+
+def _register_ref(ref: SourceRef, repo: SourceRepository) -> tuple[Source, bool]:
     source = repo.find(ref)
     if source is not None:
         if source.status is Status.PENDING:
@@ -132,6 +152,7 @@ def _store(repo: SourceRepository, source: Source, fetched: FetchedSource) -> No
         duration=fetched.duration,
         description=fetched.description,
         cover=fetched.cover.name if fetched.cover else None,
+        part=fetched.part,
     )
     repo.transition(source, Status.COLLECTED)
     if fetched.transcript is not None:

@@ -217,12 +217,24 @@ def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run,
     run.run("init", str(vault))
 
     schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
-    assert "版本 3" in schema
+    assert "版本 4" in schema
     assert "sub2obsidian status --vault ." in schema
     assert "sub2obsidian mark-compiled --vault ." in schema
-    # 出处：B站 时间戳可跳转；批注 callout 不得改动
-    assert "?t=秒数" in schema
+    # 批注 callout 不得改动
     assert "> [!我]" in schema
+
+
+def test_schema_bilibili_citations_jump_to_the_right_part_and_second(run, vault: Path):
+    """B站 多P视频的每个分P是一条来源：出处链接带 p（分P序号）与 t（秒数）。"""
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "https://www.bilibili.com/video/BV1GJ411x7h7?p=1&t=205" in schema
+    assert "?p=<分P>&t=<秒数>" in schema
+    assert "?t=" not in schema  # 不再有不带 p 的 B站 时间戳写法
+    raw = chapter(schema, "## 原始材料")
+    assert "分P" in raw and "视频标题" in raw
+    assert "BV号_pN" in raw
 
 
 def test_schema_tells_the_agent_how_to_fill_screening_suggestions(run, vault: Path):
