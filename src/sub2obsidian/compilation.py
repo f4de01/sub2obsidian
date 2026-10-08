@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sub2obsidian.links import SourceRef, UnsupportedLink, extract_urls, normalize
-from sub2obsidian.sources import METADATA_FILE, Source, SourceRepository, Status, compilable
+from sub2obsidian.sources import METADATA_FILE, Source, SourceRepository, Status
 
 
 @dataclass(frozen=True)
@@ -25,7 +25,7 @@ def status_report(vault: Path) -> StatusReport:
     tally = Counter(source.status for source in sources)
     return StatusReport(
         counts={status: tally[status] for status in Status},
-        compilable=[s for s in sources if compilable(s.kind, s.status)],
+        compilable=[source for source in sources if source.is_compilable],
     )
 
 
@@ -48,6 +48,7 @@ def _ref_of(name: str) -> SourceRef | None:
         parts.pop()
     if len(parts) < 2 or {".", ".."} & set(parts[-2:]):
         return None
+    # 来源目录只由「平台 + 平台内 ID」决定，查找时用不到规范链接
     return SourceRef(parts[-2], parts[-1], "")
 
 
@@ -68,7 +69,7 @@ def mark_compiled(vault: Path, names: Sequence[str]) -> list[Source]:
         source = repo.find(ref) if ref is not None else None
         if source is None:
             problems.append(f"找不到来源：{name}")
-        elif not compilable(source.kind, source.status):
+        elif not source.is_compilable:
             problems.append(
                 f"{source.ref.key}（{source.title}）不可编译：{source.kind}处于「{source.status}」"
             )

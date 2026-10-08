@@ -51,10 +51,6 @@ def _render(asset: str) -> str:
     )
 
 
-def render_schema() -> str:
-    return _render("schema_template.md")
-
-
 def _index() -> str:
     return "# 索引\n\n## 主题域\n\n## 概念\n\n## 来源\n\n## 综述\n"
 
@@ -102,7 +98,7 @@ def _obsidian_config() -> dict[str, bytes]:
 
 def _skeleton_files(today: dt.date) -> dict[str, bytes]:
     """初始化负责的全部文件：知识库内相对路径 → 内容。"""
-    schema = _text(render_schema())
+    schema = _text(_render("schema_template.md"))
     return {
         "index.md": _text(_index()),
         "log.md": _text(_log(today)),

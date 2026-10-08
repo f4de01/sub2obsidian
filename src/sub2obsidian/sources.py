@@ -111,6 +111,10 @@ class Source:
         return Kind(self.meta["类型"])
 
     @property
+    def is_compilable(self) -> bool:
+        return compilable(self.kind, self.status)
+
+    @property
     def title(self) -> str:
         return self.meta.get("标题") or self.ref.display
 
