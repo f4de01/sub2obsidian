@@ -1,0 +1,14 @@
+{
+  "status_code": 0,
+  "aweme_detail": null,
+  "filter_detail": {
+    "aweme_id": "7434567890123456789",
+    "detail_msg": "因作品权限或已被删除，无法观看，去看看其他作品吧",
+    "filter_reason": "status_deleted",
+    "icon": "https://lf3-cdn-tos.douyinstatic.com/obj/ies-fe-bee/fake/empty.png",
+    "notice": ""
+  },
+  "log_pb": {
+    "impr_id": "20241008120000FAKEIMPRID0123456789"
+  }
+}

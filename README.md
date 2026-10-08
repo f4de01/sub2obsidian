@@ -23,7 +23,8 @@ uv tool install --force .
 | --- | --- | --- |
 | [yt-dlp](https://github.com/yt-dlp/yt-dlp) | B站 视频元数据与平台字幕 | 作为 Python 依赖随 `uv tool install .` 一起装好，无需单独安装 |
 | Playwright Chromium | `login` 扫码登录用的专用浏览器 | 见下方命令（约 150 MB，装在 `%LOCALAPPDATA%\ms-playwright\`） |
-| [ffmpeg](https://ffmpeg.org/) | `transcribe` 下载音频后转成 16 kHz 单声道 WAV | `winget install --id Gyan.FFmpeg -e`，装好后**重新打开终端**，确认 `ffmpeg -version` 能运行 |
+| [F2](https://github.com/Johnserf-Seed/f2) | 抖音作品详情（接口签名与请求头） | 从 git 安装（其最后一个 tag 版本已过时），见下方命令 |
+| [ffmpeg](https://ffmpeg.org/) | `transcribe` 与抖音视频下载音频后转成 16 kHz 单声道 WAV | `winget install --id Gyan.FFmpeg -e`，装好后**重新打开终端**，确认 `ffmpeg -version` 能运行 |
 | [faster-whisper](https://github.com/SYSTRAN/faster-whisper) | 没有平台字幕时在本机 GPU 上转写 | 随 `uv tool install .` 装好（含 Windows 所需的 cuBLAS 运行库）；需要 NVIDIA 显卡与较新的驱动，模型首次运行时自动下载 |
 
 ```powershell
@@ -32,7 +33,12 @@ uv tool install --force .
 
 # B站 改版导致采集失败时，先把 yt-dlp 升级到最新版（在本仓库根目录）
 uv tool install --force --upgrade-package yt-dlp .
+
+# 抖音需要 F2（从 git 安装，固定到一个提交；在本仓库根目录）
+uv tool install --force --with "f2 @ git+https://github.com/Johnserf-Seed/f2@f6be8c0ffba9a127075bbeafe4838716650b6325" .
 ```
+
+抖音每隔几个月更换接口签名，F2 随之更新。抖音采集持续报「接口返回空响应」且重新登录也无效时，把上面命令里的提交换成 F2 最新的提交重新安装；仍然不行时考虑改用付费的 TikHub（ADR-0003）。
 
 开发环境（`uv sync` 之后）用 `uv run python -m playwright install chromium` 安装浏览器。
 
@@ -58,9 +64,10 @@ sub2obsidian init "E:\笔记\知识库"  # 指定路径
 
 ```powershell
 sub2obsidian login bilibili
+sub2obsidian login douyin
 ```
 
-弹出工具专用的 Chromium 窗口，扫码登录 B站 后窗口自动关闭。登录状态保存在用户配置目录的专用浏览器配置里，之后的命令直接复用，不读取你日常使用的 Chrome / Edge。B站 的字幕（CC 与 AI 字幕）需要登录才能拿到；登录失效时命令会提示「请重新登录 B站：sub2obsidian login bilibili」。
+弹出工具专用的 Chromium 窗口，扫码登录后窗口自动关闭（抖音打开的是首页，在弹出的登录框里扫码）。登录状态保存在用户配置目录的专用浏览器配置里，之后的命令直接复用，不读取你日常使用的 Chrome / Edge。B站 的字幕（CC 与 AI 字幕）需要登录才能拿到；抖音的作品详情接口需要登录 cookie，每次采集时从浏览器配置中读出、拼成 cookie 字符串交给 F2。登录失效时命令会提示「请重新登录 B站：sub2obsidian login bilibili」「请重新登录 抖音：sub2obsidian login douyin」。
 
 ## 采集一条来源（推送）
 
@@ -68,11 +75,14 @@ sub2obsidian login bilibili
 sub2obsidian capture https://www.bilibili.com/video/BV1GJ411x7h7
 sub2obsidian capture "【某视频标题-哔哩哔哩】 https://b23.tv/xxxxxxx"   # 直接粘贴 App 分享文本
 sub2obsidian capture --vault "E:\笔记\知识库" <链接>                    # 指定知识库
+sub2obsidian capture "7.94 复制打开抖音，看看【某某的作品】… https://v.douyin.com/xxxxxxx/ …"  # 抖音分享口令
 ```
 
-- 自动从分享文本中提取链接，解析 b23.tv 短链、剥离追踪参数；同一视频无论以哪种链接提交，只保留一份。
-- 推送来的来源直接视为已通过筛选。有平台字幕的视频采集后为「已转写」；没有字幕的停在「已采集」，等待 `sub2obsidian transcribe` 转写（见下文「转写」）。
+- 自动从分享文本中提取链接，解析 b23.tv、v.douyin.com 短链，剥离追踪参数；同一来源无论以哪种链接提交（抖音的分享口令、短链、`/video/`、`/note/`、网页版的 `?modal_id=` 链接），只保留一份。
+- 推送来的来源直接视为已通过筛选。有平台字幕的视频采集后为「已转写」；没有字幕的 B站 视频停在「已采集」，等待 `sub2obsidian transcribe` 转写（见下文「转写」）。
+- 抖音没有平台字幕：抖音视频采集后当场下载、ASR 转写、删除临时音视频，`capture` 结束时即为「已转写」（转写失败时停在「已采集」，由 `transcribe` 重试）。抖音图文按文章处理：保存文字与全部图片（`正文.md` + `图01.jpg`…），没有口播稿，采集后为「已采集」即可编译。抖音请求低速、带随机间隔。
 - 视频已删除或不可见时，来源标为「已失效」，只留元数据存根，以后不再重试。
+- 抖音接口只回空响应时，可能是登录 cookie 失效，也可能是 F2 的签名算法失效：提示先重新登录，仍不行再升级 F2（见「外部工具」），来源保持「已通过」可重试。
 - 网络、风控等可重试的失败：来源保持「已通过」并记下失败原因，再次 `capture` 同一链接即重试。
 - 每次 `capture` 对原始材料的改动单独提交一次 git，不卷入 Wiki 与你未提交的改动。
 
@@ -88,7 +98,7 @@ sub2obsidian capture --vault "E:\笔记\知识库" <链接>                    #
 
 ## 日常同步：飞书收件箱 + `sync`
 
-日常增量靠**推送**：在手机上把 B站、公众号等的分享链接发给飞书机器人（与它的私聊就是**收件箱**），回到电脑执行一次 `sync`。
+日常增量靠**推送**：在手机上把 B站、抖音、公众号等的分享链接发给飞书机器人（与它的私聊就是**收件箱**），回到电脑执行一次 `sync`。
 
 ### 配置飞书收件箱（一次性）
 
@@ -171,7 +181,7 @@ sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源�
 | 位置 | 内容 |
 | --- | --- |
 | `config.toml` | 用户设置（UTF-8 TOML）。`vault`：知识库路径，首次 `init` 时自动记下；`[transcribe]` 表的 `terms`：转写术语表 |
-| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`（每次使用时从浏览器配置重新导出）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
+| `credentials/` | 平台与飞书应用凭据：`bilibili.cookies.txt`、`douyin.cookies.txt`（登录时导出；B站 每次使用时从浏览器配置重新导出，抖音每次使用时从浏览器配置读出 cookie 字符串）、`feishu.env`（飞书应用的 App ID、App Secret 与你的 open_id，由配置向导写入） |
 | `browser/<平台>/` | 登录用的 Playwright 持久化浏览器配置 |
 | `state/` | 运行状态：`inbox.toml`（收件箱读到的位置、待重试的链接）、`feishu.toml`（与机器人私聊的会话 ID）等 |
 
@@ -182,7 +192,7 @@ uv sync
 uv run pytest
 ```
 
-测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、转写引擎、凭据提供者四个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
+测试只通过「CLI 命令 + 知识库目录」观察行为，全部在临时目录中运行；`%APPDATA%` 在测试中被指向临时目录。平台适配器、收件箱、转写引擎、凭据提供者四个外部端口在行为测试中换成假实现；真实的 B站、公众号适配器用 `tests/fixtures/` 中的录制样本做契约测试，抖音适配器用按 F2 返回结构构造的样本（`tests/fixtures/douyin/`，测试不需要安装 F2），飞书收件箱用按开放平台文档构造的响应样本（`tests/fixtures/feishu/`）做契约测试（见各目录的 README），测试不需要网络、登录或浏览器。
 
 faster-whisper 的集成测试（`tests/test_faster_whisper.py`，测试音频为 Windows 语音合成的一段中文）只在本机有 CUDA 显卡、且 `large-v3-turbo` 模型已缓存时运行，否则自动跳过；测试从不下载模型。要运行它，先执行一次 `sub2obsidian transcribe`（或 `uv run python -c "from faster_whisper.utils import download_model; download_model('large-v3-turbo')"`）把模型下载好。
 

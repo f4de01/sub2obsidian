@@ -9,7 +9,7 @@ from sub2obsidian.links import PLATFORM_NAMES
 
 
 # 需要登录的平台
-LOGIN_PLATFORMS = {"bilibili"}
+LOGIN_PLATFORMS = {"bilibili", "douyin"}
 
 
 class CredentialError(Exception):
@@ -32,4 +32,8 @@ class CredentialProvider(Protocol):
 
     def cookies_file(self, platform: str) -> Path:
         """导出供 yt-dlp 使用的 Netscape cookies.txt；未登录或已失效时抛 LoginRequired。"""
+        ...
+
+    def cookie_string(self, platform: str) -> str:
+        """供 F2 使用的 cookie 字符串（`name=value; …`）；未登录或已失效时抛 LoginRequired。"""
         ...

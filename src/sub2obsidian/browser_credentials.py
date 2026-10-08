@@ -1,7 +1,8 @@
 r"""凭据提供者的实现：Playwright 持久化浏览器配置。
 
 - 浏览器配置放在用户配置目录 browser\<平台>\，登录一次后可复用；
-- 每次需要时从该配置中读出 cookie，导出为 credentials\<平台>.cookies.txt（Netscape 格式，供 yt-dlp）；
+- 每次需要时从该配置中读出 cookie，导出为 credentials\<平台>.cookies.txt（Netscape 格式，供 yt-dlp），
+  或拼成 cookie 字符串（供 F2）；
 - 不读取用户日常使用的 Chrome / Edge（应用绑定加密导致读取不可靠）。
 """
 
@@ -31,6 +32,11 @@ SITES = {
         url="https://passport.bilibili.com/login",
         domain="bilibili.com",
         session_cookie="SESSDATA",
+    ),
+    "douyin": LoginSite(
+        url="https://www.douyin.com/",  # 首页会弹出扫码登录框
+        domain="douyin.com",
+        session_cookie="sessionid",
     ),
 }
 
@@ -164,14 +170,25 @@ class BrowserCredentials:
         self._export(platform, site, cookies)
 
     def cookies_file(self, platform: str) -> Path:
+        return self._export(platform, SITES[platform], self._session(platform))
+
+    def cookie_string(self, platform: str) -> str:
         site = SITES[platform]
+        return "; ".join(
+            f"{cookie['name']}={cookie['value']}"
+            for cookie in self._session(platform)
+            if _belongs_to(cookie, site.domain) and not _expired(cookie)
+        )
+
+    def _session(self, platform: str) -> list[Cookie]:
+        """浏览器配置中当前的 cookie；没有登录或登录已失效时抛 LoginRequired。"""
         profile = self._profile(platform)
         if not profile.is_dir():
             raise LoginRequired(platform)
         cookies = self.browser.cookies(profile)
-        if not self._logged_in(site, cookies):
+        if not self._logged_in(SITES[platform], cookies):
             raise LoginRequired(platform)
-        return self._export(platform, site, cookies)
+        return cookies
 
     def _export(self, platform: str, site: LoginSite, cookies: list[Cookie]) -> Path:
         target = (self.user_config.credentials_dir / f"{platform}.cookies.txt").resolve()

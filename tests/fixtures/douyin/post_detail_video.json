@@ -1,0 +1,185 @@
+{
+  "status_code": 0,
+  "aweme_detail": {
+    "aweme_id": "7412345678901234567",
+    "aweme_type": 0,
+    "media_type": 4,
+    "desc": "三分钟讲清楚 MCP 是什么 #AI #大模型 #MCP",
+    "caption": "三分钟讲清楚 MCP 是什么 #AI #大模型 #MCP",
+    "item_title": "",
+    "create_time": 1725967800,
+    "duration": 183466,
+    "author": {
+      "uid": "98765432101",
+      "short_id": "0",
+      "unique_id": "ai_boke_demo",
+      "sec_uid": "MS4wLjABAAAAfakeSecUidForContractTests0123456789abcdef",
+      "nickname": "某AI博主",
+      "signature": "每天三分钟，聊聊 AI",
+      "avatar_thumb": {
+        "uri": "aweme-avatar/fake",
+        "url_list": [
+          "https://p3-pc.douyinpic.com/aweme/100x100/aweme-avatar/fake.jpeg?from=327834062"
+        ]
+      },
+      "follower_count": 123456,
+      "custom_verify": "",
+      "enterprise_verify_reason": ""
+    },
+    "status": {
+      "aweme_id": "7412345678901234567",
+      "is_delete": false,
+      "allow_share": true,
+      "is_prohibited": false,
+      "in_reviewing": false,
+      "part_see": 0,
+      "private_status": 0,
+      "review_result": {
+        "review_status": 0
+      }
+    },
+    "statistics": {
+      "admire_count": 0,
+      "collect_count": 3456,
+      "comment_count": 234,
+      "digg_count": 12345,
+      "play_count": 0,
+      "share_count": 567
+    },
+    "text_extra": [
+      {
+        "start": 18,
+        "end": 21,
+        "type": 1,
+        "hashtag_name": "AI",
+        "hashtag_id": "1"
+      },
+      {
+        "start": 22,
+        "end": 26,
+        "type": 1,
+        "hashtag_name": "大模型",
+        "hashtag_id": "2"
+      },
+      {
+        "start": 27,
+        "end": 31,
+        "type": 1,
+        "hashtag_name": "MCP",
+        "hashtag_id": "3"
+      }
+    ],
+    "images": null,
+    "video": {
+      "play_addr": {
+        "uri": "v0200fg10000fakeplayaddr0001",
+        "url_list": [
+          "https://v26-web.douyinvod.com/fake1080/v0200fg10000fakeplayaddr0001/?a=6383&ch=10010&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&br=1850&bt=1850&cs=0&ds=4&ft=fake&mime_type=video_mp4&qs=0&rc=fake&btag=80000e00030000&expire=1727000000&l=fake&ply_type=4&policy=4&signature=fakesig&tk=webid",
+          "https://www.douyin.com/aweme/v1/play/?file_id=fake1080&is_play_url=1&line=0&sign=fakesig&source=PackSourceEnum_AWEME_DETAIL&video_id=v0200fg10000fakeplayaddr0001"
+        ],
+        "width": 1080,
+        "height": 1920,
+        "data_size": 42318750,
+        "file_hash": "hash1080",
+        "file_cs": "c:0-1-2"
+      },
+      "bit_rate": [
+        {
+          "gear_name": "normal_1080_0",
+          "quality_type": 1,
+          "bit_rate": 1850000,
+          "is_h265": 0,
+          "FPS": 30,
+          "play_addr": {
+            "uri": "v0200fg10000fakeplayaddr0001",
+            "url_list": [
+              "https://v26-web.douyinvod.com/fake1080/v0200fg10000fakeplayaddr0001/?a=6383&ch=10010&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&br=1850&bt=1850&cs=0&ds=4&ft=fake&mime_type=video_mp4&qs=0&rc=fake&btag=80000e00030000&expire=1727000000&l=fake&ply_type=4&policy=4&signature=fakesig&tk=webid",
+              "https://www.douyin.com/aweme/v1/play/?file_id=fake1080&is_play_url=1&line=0&sign=fakesig&source=PackSourceEnum_AWEME_DETAIL&video_id=v0200fg10000fakeplayaddr0001"
+            ],
+            "width": 1080,
+            "height": 1920,
+            "data_size": 42318750,
+            "file_hash": "hash1080",
+            "file_cs": "c:0-1-2"
+          }
+        },
+        {
+          "gear_name": "adapt_lowest_540_1",
+          "quality_type": 292,
+          "bit_rate": 420000,
+          "is_h265": 1,
+          "FPS": 30,
+          "play_addr": {
+            "uri": "v0200fg10000fakeplayaddr0001",
+            "url_list": [
+              "https://v5-web.douyinvod.com/fake540/v0200fg10000fakeplayaddr0001/?a=6383&ch=10010&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&br=420&bt=420&cs=0&ds=4&ft=fake&mime_type=video_mp4&qs=0&rc=fake&btag=80000e00030000&expire=1727000000&l=fake&ply_type=4&policy=4&signature=fakesig&tk=webid",
+              "https://www.douyin.com/aweme/v1/play/?file_id=fake540&is_play_url=1&line=0&sign=fakesig&source=PackSourceEnum_AWEME_DETAIL&video_id=v0200fg10000fakeplayaddr0001"
+            ],
+            "width": 540,
+            "height": 960,
+            "data_size": 9607500,
+            "file_hash": "hash540",
+            "file_cs": "c:0-1-2"
+          }
+        },
+        {
+          "gear_name": "normal_720_0",
+          "quality_type": 10,
+          "bit_rate": 950000,
+          "is_h265": 0,
+          "FPS": 30,
+          "play_addr": {
+            "uri": "v0200fg10000fakeplayaddr0001",
+            "url_list": [
+              "https://v3-web.douyinvod.com/fake720/v0200fg10000fakeplayaddr0001/?a=6383&ch=10010&cr=3&dr=0&lr=all&cd=0%7C0%7C0%7C3&br=950&bt=950&cs=0&ds=4&ft=fake&mime_type=video_mp4&qs=0&rc=fake&btag=80000e00030000&expire=1727000000&l=fake&ply_type=4&policy=4&signature=fakesig&tk=webid",
+              "https://www.douyin.com/aweme/v1/play/?file_id=fake720&is_play_url=1&line=0&sign=fakesig&source=PackSourceEnum_AWEME_DETAIL&video_id=v0200fg10000fakeplayaddr0001"
+            ],
+            "width": 720,
+            "height": 1280,
+            "data_size": 21731250,
+            "file_hash": "hash720",
+            "file_cs": "c:0-1-2"
+          }
+        }
+      ],
+      "cover": {
+        "uri": "tos-cn-p-0015/o4fakecovervideo",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/o4fakecovervideo~tplv-dy-cropcenter:323:430.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=cover&biz_tag=pcweb_cover&l=fake"
+        ],
+        "width": 720,
+        "height": 720
+      },
+      "origin_cover": {
+        "uri": "tos-cn-p-0015/o4fakecovervideo",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/o4fakecovervideo~tplv-dy-360p.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=cover&biz_tag=pcweb_cover&l=fake"
+        ],
+        "width": 360,
+        "height": 640
+      },
+      "dynamic_cover": {
+        "uri": "fake",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/obj/fake.webp"
+        ]
+      },
+      "width": 1080,
+      "height": 1920,
+      "ratio": "1080p",
+      "duration": 183466
+    },
+    "share_url": "https://www.iesdouyin.com/share/video/7412345678901234567/?region=CN&mid=7412000000000000000&u_code=0&did=MS4wLjABAAAA&iid=MS4wLjABAAAA&with_sec_did=1&titleType=title",
+    "music": {
+      "id": 7412000000000000000,
+      "title": "@某AI博主创作的原声",
+      "author": "某AI博主",
+      "duration": 183
+    },
+    "is_ads": false,
+    "region": "CN"
+  },
+  "log_pb": {
+    "impr_id": "20240910193000FAKEIMPRID0123456789"
+  }
+}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,7 +21,12 @@ from sub2obsidian.sync import INBOX_STATE_FILE
 from sub2obsidian.sync import summarize as summarize_sync
 from sub2obsidian.sync import sync as sync_sources
 from sub2obsidian.tools import MissingTool
-from sub2obsidian.transcription import Transcriber, summarize, transcribe_collected
+from sub2obsidian.transcription import (
+    Transcriber,
+    summarize,
+    transcribe_captured,
+    transcribe_collected,
+)
 from sub2obsidian.vault import RAW_DIR, init_vault
 
 
@@ -95,24 +100,6 @@ vault_option = click.option(
 )
 
 
-@cli.command()
-@click.argument("text", nargs=-1, required=True)
-@vault_option
-@click.pass_obj
-def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> None:
-    """采集链接或分享文本中的来源（推送来的来源视为已通过筛选）。"""
-    vault = _initialized_vault(vault_path)
-    outcomes = capture_text(" ".join(text), vault, ports.adapters)
-    for outcome in outcomes:
-        click.echo(outcome.message, err=not outcome.ok)
-    try:
-        commit_changes(vault, outcomes)
-    except GitError as error:
-        raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
-    if not all(outcome.ok for outcome in outcomes):
-        raise SystemExit(1)
-
-
 def _run_batch(
     vault: Path, outcomes: Iterable[Outcome], *, command: str, verb: str
 ) -> tuple[list[Outcome], MissingTool | None]:
@@ -133,6 +120,34 @@ def _run_batch(
     except GitError as error:
         raise click.ClickException(f"原始材料已写入，但 git 提交失败：{error}") from error
     return done, stopped
+
+
+@cli.command()
+@click.argument("text", nargs=-1, required=True)
+@vault_option
+@click.pass_obj
+def capture(ports: Ports, text: tuple[str, ...], vault_path: Path | None) -> None:
+    """采集链接或分享文本中的来源（推送来的来源视为已通过筛选）。
+
+    抖音没有平台字幕，采集到的视频当场转写；其他平台没有字幕的视频等待 transcribe。
+    """
+    vault = _initialized_vault(vault_path)
+    terms = UserConfig.default().glossary()
+
+    def capture_then_transcribe() -> Iterator[Outcome]:
+        captured: list[Outcome] = []
+        for outcome in capture_text(" ".join(text), vault, ports.adapters):
+            captured.append(outcome)
+            yield outcome
+        yield from transcribe_captured(vault, captured, ports.adapters, ports.transcriber, terms)
+
+    outcomes, stopped = _run_batch(
+        vault, capture_then_transcribe(), command="capture", verb="采集"
+    )
+    if stopped is not None:
+        raise click.ClickException(f"capture 中止：{stopped}")
+    if not all(outcome.ok for outcome in outcomes):
+        raise SystemExit(1)
 
 
 @cli.command()
@@ -159,7 +174,10 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
 @vault_option
 @click.pass_obj
 def sync(ports: Ports, vault_path: Path | None) -> None:
-    """读取收件箱中的新链接，采集所有「已通过」的来源并转写；原始材料的改动单独提交 git。"""
+    """读取收件箱中的新链接，采集所有「已通过」的来源并转写；原始材料的改动单独提交 git。
+
+    缺少 ffmpeg、F2 等本机工具时整批中止，已完成的改动照常提交。
+    """
     vault = _initialized_vault(vault_path)
     user_config = UserConfig.default()
     outcomes, stopped = _run_batch(
@@ -177,7 +195,7 @@ def sync(ports: Ports, vault_path: Path | None) -> None:
     )
     click.echo(summarize_sync(outcomes))
     if stopped is not None:
-        raise click.ClickException(f"转写中止：{stopped}")
+        raise click.ClickException(f"sync 中止：{stopped}")
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
 
@@ -223,6 +241,7 @@ def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> 
 def main() -> None:
     from sub2obsidian.bilibili import BilibiliAdapter
     from sub2obsidian.browser_credentials import BrowserCredentials
+    from sub2obsidian.douyin import DouyinAdapter
     from sub2obsidian.feishu import FeishuInbox
     from sub2obsidian.wechat import WechatAdapter
     from sub2obsidian.whisper import FasterWhisperTranscriber
@@ -233,7 +252,11 @@ def main() -> None:
         obj=Ports(
             launcher=SystemLauncher(),
             credentials=credentials,
-            adapters={"bilibili": BilibiliAdapter(credentials), "wechat": WechatAdapter()},
+            adapters={
+                "bilibili": BilibiliAdapter(credentials),
+                "douyin": DouyinAdapter(credentials),
+                "wechat": WechatAdapter(),
+            },
             transcriber=FasterWhisperTranscriber(),
             inbox=FeishuInbox(user_config),
         )

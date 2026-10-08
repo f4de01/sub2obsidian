@@ -84,6 +84,45 @@ def test_sync_collects_pushed_bilibili_and_wechat_links_as_approved_and_transcri
     assert (source_dir(vault, "wechat", WX_ID) / "正文.md").is_file()
 
 
+def test_sync_handles_pushed_douyin_share_text_video_and_note(
+    run, inbox, douyin, transcriber, credentials, initialized
+):
+    from test_capture_douyin import (
+        ASR as DOUYIN_ASR,
+        NOTE_ID,
+        NOTE_LINK,
+        SHARE_TEXT,
+        SHORT,
+        VIDEO_ID,
+        douyin_note,
+        douyin_video,
+    )
+
+    vault = initialized
+    credentials.login("douyin")
+    douyin.posts[VIDEO_ID] = douyin_video()
+    douyin.posts[NOTE_ID] = douyin_note()
+    douyin.short_links[SHORT] = f"https://www.iesdouyin.com/share/video/{VIDEO_ID}/?region=CN"
+    transcriber.segments[f"audio:{VIDEO_ID}"] = DOUYIN_ASR
+    inbox.push(SHARE_TEXT, f"这篇图文不错 {NOTE_LINK}")
+
+    result = run.run("sync")
+
+    assert result.exit_code == 0, result.output
+    video_meta = read_metadata(vault, "douyin", VIDEO_ID)
+    assert video_meta["采集途径"] == "推送"
+    assert video_meta["来源状态"] == "已转写"
+    assert (source_dir(vault, "douyin", VIDEO_ID) / "口播稿.md").is_file()
+    note_meta = read_metadata(vault, "douyin", NOTE_ID)
+    assert note_meta["类型"] == "图文"
+    assert note_meta["来源状态"] == "已采集"
+    assert (source_dir(vault, "douyin", NOTE_ID) / "正文.md").is_file()
+    assert [content for content, _ in transcriber.calls] == [f"audio:{VIDEO_ID}"]
+    assert "新增来源 2" in result.output
+    assert git(vault, "log", "-1", "--format=%s").startswith("sync:")
+    assert git(vault, "status", "--porcelain") == ""
+
+
 def test_links_pushed_while_offline_are_read_by_next_sync_and_read_messages_are_not_reprocessed(
     run, inbox, bilibili, transcriber, initialized
 ):
@@ -364,7 +403,7 @@ def test_missing_ffmpeg_stops_transcription_but_collected_sources_are_committed(
     result = run.run("sync")
 
     assert result.exit_code != 0
-    assert "转写中止：找不到 ffmpeg" in result.output
+    assert "sync 中止：找不到 ffmpeg" in result.output
     assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已采集"
     assert git(vault, "log", "-1", "--format=%s").startswith("sync:")
     assert git(vault, "status", "--porcelain") == ""

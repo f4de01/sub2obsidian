@@ -55,6 +55,11 @@ class FakeCredentials:
             raise LoginRequired(platform)
         return self._cookies_path(platform)
 
+    def cookie_string(self, platform: str) -> str:
+        if platform not in self.logged_in:
+            raise LoginRequired(platform)
+        return f"sessionid={self.secret}"
+
 
 @dataclass
 class FakeBilibili:
@@ -131,6 +136,44 @@ class FakeWechat:
 
 
 @dataclass
+class FakeDouyin:
+    """替换抖音适配器：按作品 ID 返回预置的视频或图文，并记录每次采集与音频下载。
+
+    要求登录：未经 FakeCredentials 登录时，采集报「请重新登录 抖音」。
+    """
+
+    credentials: FakeCredentials
+    platform: str = "douyin"
+    posts: dict[str, FetchedSource] = field(default_factory=dict)
+    unavailable: dict[str, str] = field(default_factory=dict)
+    failures: dict[str, str] = field(default_factory=dict)
+    short_links: dict[str, str] = field(default_factory=dict)  # 短链 → 跳转到的完整链接
+    fetched: list[str] = field(default_factory=list)
+    audio_files: list[Path] = field(default_factory=list)  # 每次下载的临时音频
+
+    def expand_short_link(self, url: str) -> str:
+        if url not in self.short_links:
+            raise FetchFailed(f"短链解析失败：{url}")
+        return self.short_links[url]
+
+    def fetch(self, ref: SourceRef) -> FetchedSource:
+        self.credentials.cookie_string(self.platform)
+        self.fetched.append(ref.platform_id)
+        if ref.platform_id in self.failures:
+            raise FetchFailed(self.failures.pop(ref.platform_id))
+        if ref.platform_id in self.unavailable:
+            raise SourceUnavailable(self.unavailable[ref.platform_id])
+        return self.posts[ref.platform_id]
+
+    def download_audio(self, ref: SourceRef, directory: Path) -> Path:
+        assert self.posts[ref.platform_id].kind == "视频", "图文没有音频"
+        audio = directory / f"{ref.platform_id}.wav"
+        audio.write_bytes(f"audio:{ref.platform_id}".encode())
+        self.audio_files.append(audio)
+        return audio
+
+
+@dataclass
 class FakeTranscriber:
     """替换 faster-whisper：按音频内容返回预置分段，并记录每次调用收到的音频与术语。"""
 
@@ -173,6 +216,7 @@ class Cli:
     credentials: FakeCredentials
     bilibili: FakeBilibili
     wechat: FakeWechat
+    douyin: FakeDouyin
     transcriber: FakeTranscriber
     inbox: FakeInbox
 
@@ -180,7 +224,11 @@ class Cli:
         ports = Ports(
             launcher=self.launcher,
             credentials=self.credentials,
-            adapters={"bilibili": self.bilibili, "wechat": self.wechat},
+            adapters={
+                "bilibili": self.bilibili,
+                "wechat": self.wechat,
+                "douyin": self.douyin,
+            },
             transcriber=self.transcriber,
             inbox=self.inbox,
         )
@@ -217,6 +265,11 @@ def wechat() -> FakeWechat:
 
 
 @pytest.fixture
+def douyin(credentials: FakeCredentials) -> FakeDouyin:
+    return FakeDouyin(credentials=credentials)
+
+
+@pytest.fixture
 def transcriber() -> FakeTranscriber:
     return FakeTranscriber()
 
@@ -232,6 +285,7 @@ def run(
     credentials: FakeCredentials,
     bilibili: FakeBilibili,
     wechat: FakeWechat,
+    douyin: FakeDouyin,
     transcriber: FakeTranscriber,
     inbox: FakeInbox,
 ) -> Cli:
@@ -240,6 +294,7 @@ def run(
         credentials=credentials,
         bilibili=bilibili,
         wechat=wechat,
+        douyin=douyin,
         transcriber=transcriber,
         inbox=inbox,
     )

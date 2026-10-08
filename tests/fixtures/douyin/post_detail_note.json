@@ -1,0 +1,131 @@
+{
+  "status_code": 0,
+  "aweme_detail": {
+    "aweme_id": "7423456789012345678",
+    "aweme_type": 68,
+    "media_type": 42,
+    "desc": "RAG 入门笔记\n检索增强生成分三步：切分、检索、生成\n收藏起来慢慢看 #RAG #AI学习",
+    "caption": "RAG 入门笔记\n检索增强生成分三步：切分、检索、生成\n收藏起来慢慢看 #RAG #AI学习",
+    "item_title": "RAG 入门笔记",
+    "create_time": 1727740800,
+    "duration": 0,
+    "author": {
+      "uid": "98765432101",
+      "short_id": "0",
+      "unique_id": "ai_boke_demo",
+      "sec_uid": "MS4wLjABAAAAfakeSecUidForContractTests0123456789abcdef",
+      "nickname": "某AI博主",
+      "signature": "每天三分钟，聊聊 AI",
+      "avatar_thumb": {
+        "uri": "aweme-avatar/fake",
+        "url_list": [
+          "https://p3-pc.douyinpic.com/aweme/100x100/aweme-avatar/fake.jpeg?from=327834062"
+        ]
+      },
+      "follower_count": 123456,
+      "custom_verify": "",
+      "enterprise_verify_reason": ""
+    },
+    "status": {
+      "aweme_id": "7423456789012345678",
+      "is_delete": false,
+      "allow_share": true,
+      "is_prohibited": false,
+      "in_reviewing": false,
+      "part_see": 0,
+      "private_status": 0,
+      "review_result": {
+        "review_status": 0
+      }
+    },
+    "statistics": {
+      "admire_count": 0,
+      "collect_count": 789,
+      "comment_count": 12,
+      "digg_count": 2345,
+      "play_count": 0,
+      "share_count": 67
+    },
+    "images": [
+      {
+        "uri": "tos-cn-i-0813c001/ofakeimage01",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage01~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake1a%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p26-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage01~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake1b%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage01~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake1c%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake"
+        ],
+        "download_url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage01~tplv-dy-aweme-images-watermark.jpeg?x-expires=1727000000&x-signature=fakewm1%3D"
+        ],
+        "width": 1080,
+        "height": 1440,
+        "mask_url_list": null,
+        "interaction_stickers": null
+      },
+      {
+        "uri": "tos-cn-i-0813c001/ofakeimage02",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage02~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake2a%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p26-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage02~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake2b%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage02~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake2c%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake"
+        ],
+        "download_url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage02~tplv-dy-aweme-images-watermark.jpeg?x-expires=1727000000&x-signature=fakewm2%3D"
+        ],
+        "width": 1080,
+        "height": 1440,
+        "mask_url_list": null,
+        "interaction_stickers": null
+      },
+      {
+        "uri": "tos-cn-i-0813c001/ofakeimage03",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage03~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake3a%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p26-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage03~tplv-dy-aweme-images:q75.webp?lk3s=138a59ce&x-expires=1727000000&x-signature=fake3b%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake",
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage03~tplv-dy-aweme-images:q75.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake3c%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=image&biz_tag=aweme_images&l=fake"
+        ],
+        "download_url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-i-0813c001/ofakeimage03~tplv-dy-aweme-images-watermark.jpeg?x-expires=1727000000&x-signature=fakewm3%3D"
+        ],
+        "width": 1080,
+        "height": 1440,
+        "mask_url_list": null,
+        "interaction_stickers": null
+      }
+    ],
+    "video": {
+      "play_addr": {
+        "uri": "https://sf5-hl-ali-cdn-tos.douyinstatic.com/obj/ies-music/fake.mp3",
+        "url_list": [
+          "https://sf5-hl-ali-cdn-tos.douyinstatic.com/obj/ies-music/fake.mp3"
+        ],
+        "width": 720,
+        "height": 720
+      },
+      "cover": {
+        "uri": "tos-cn-i-0813c001/ofakeimage01",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/ofakeimage01~tplv-dy-cropcenter:323:430.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=cover&biz_tag=pcweb_cover&l=fake"
+        ],
+        "width": 720,
+        "height": 720
+      },
+      "origin_cover": {
+        "uri": "tos-cn-i-0813c001/ofakeimage01",
+        "url_list": [
+          "https://p3-pc-sign.douyinpic.com/tos-cn-p-0015/ofakeimage01~tplv-dy-360p.jpeg?lk3s=138a59ce&x-expires=1727000000&x-signature=fake%3D&from=327834062&s=PackSourceEnum_AWEME_DETAIL&se=false&sc=cover&biz_tag=pcweb_cover&l=fake"
+        ],
+        "width": 360,
+        "height": 480
+      },
+      "bit_rate": null,
+      "duration": 0
+    },
+    "share_url": "https://www.iesdouyin.com/share/note/7423456789012345678/?region=CN&mid=7423000000000000000&u_code=0&did=MS4wLjABAAAA&with_sec_did=1&titleType=title",
+    "is_ads": false,
+    "region": "CN"
+  },
+  "log_pb": {
+    "impr_id": "20241001080000FAKEIMPRID0123456789"
+  }
+}

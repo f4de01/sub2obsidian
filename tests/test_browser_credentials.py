@@ -163,3 +163,89 @@ def test_credentials_are_written_only_to_user_config_dir_even_when_run_inside_va
 
     assert list(vault.rglob("*")) == []
     assert (user_config.credentials_dir / "bilibili.cookies.txt").is_file()
+
+
+DOUYIN_LOGGED_IN = [
+    playwright_cookie("sessionid", "0123abcd", domain=".douyin.com"),
+    playwright_cookie("sid_guard", "0123abcd%7C1727000000", domain=".douyin.com"),
+    playwright_cookie("ttwid", "1%7Cvisitor", domain=".douyin.com", expires=-1),  # 会话 cookie
+    playwright_cookie("s_v_web_id", "verify_xyz", domain="www.douyin.com"),
+    playwright_cookie("old", "gone", domain=".douyin.com", expires=time.time() - 60),
+    playwright_cookie("SESSDATA", "bili", domain=".bilibili.com"),
+]
+
+
+def test_login_douyin_opens_douyin_in_its_own_profile(user_config):
+    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
+
+    BrowserCredentials(user_config, browser).login("douyin")
+
+    profile, url = browser.logins[0]
+    assert profile == user_config.browser_profile_dir("douyin")
+    assert url.startswith("https://www.douyin.com")
+
+
+def test_cookie_string_exports_douyin_cookies_for_f2(user_config):
+    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("douyin")
+
+    cookie = credentials.cookie_string("douyin")
+
+    pairs = dict(pair.split("=", 1) for pair in cookie.split("; "))
+    assert pairs == {
+        "sessionid": "0123abcd",
+        "sid_guard": "0123abcd%7C1727000000",
+        "ttwid": "1%7Cvisitor",
+        "s_v_web_id": "verify_xyz",
+    }
+
+
+def test_douyin_cookie_string_is_reread_from_the_profile_each_time(user_config):
+    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("douyin")
+    profile = user_config.browser_profile_dir("douyin")
+    browser.stored[profile] = [playwright_cookie("sessionid", "rotated", domain=".douyin.com")]
+
+    assert credentials.cookie_string("douyin") == "sessionid=rotated"
+
+
+@pytest.mark.parametrize(
+    "cookies",
+    [
+        pytest.param([], id="cookie被清空"),
+        pytest.param(
+            [playwright_cookie("sessionid", "old", domain=".douyin.com", expires=time.time() - 60)],
+            id="已过期",
+        ),
+        pytest.param([playwright_cookie("ttwid", "visitor", domain=".douyin.com")], id="只有访客cookie"),
+    ],
+)
+def test_douyin_without_live_session_asks_to_log_in_again(user_config, cookies):
+    browser = FakeBrowser(on_login=DOUYIN_LOGGED_IN)
+    credentials = BrowserCredentials(user_config, browser)
+    credentials.login("douyin")
+    browser.stored[user_config.browser_profile_dir("douyin")] = cookies
+
+    with pytest.raises(LoginRequired, match="请重新登录 抖音：sub2obsidian login douyin"):
+        credentials.cookie_string("douyin")
+
+
+def test_douyin_never_logged_in_asks_to_log_in(user_config):
+    with pytest.raises(LoginRequired, match="请重新登录 抖音"):
+        BrowserCredentials(user_config, FakeBrowser()).cookie_string("douyin")
+
+
+def test_douyin_cookie_string_is_never_written_inside_the_vault(
+    user_config, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    vault = tmp_path / "知识库"
+    vault.mkdir()
+    monkeypatch.chdir(vault)
+    credentials = BrowserCredentials(user_config, FakeBrowser(on_login=DOUYIN_LOGGED_IN))
+
+    credentials.login("douyin")
+    credentials.cookie_string("douyin")
+
+    assert list(vault.rglob("*")) == []

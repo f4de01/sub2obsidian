@@ -9,7 +9,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urlsplit
 
-PLATFORM_NAMES = {"bilibili": "B站", "wechat": "公众号"}
+PLATFORM_NAMES = {"bilibili": "B站", "douyin": "抖音", "wechat": "公众号"}
 
 
 @dataclass(frozen=True)
@@ -42,8 +42,16 @@ _URL = re.compile(r"(?i:https?)://[^\x00-\x20\x7f-\U0010ffff<>\"'\[\]]+")
 _BV = re.compile(r"(?i:bv)([0-9A-Za-z]{10})")
 _BILIBILI_HOSTS = {"bilibili.com", "www.bilibili.com", "m.bilibili.com"}
 # 短链域名 → 平台
-SHORT_LINK_HOSTS = {"b23.tv": "bilibili", "bili2233.cn": "bilibili"}
+SHORT_LINK_HOSTS = {"b23.tv": "bilibili", "bili2233.cn": "bilibili", "v.douyin.com": "douyin"}
 WECHAT_HOST = "mp.weixin.qq.com"
+_DOUYIN_HOSTS = {
+    "douyin.com",
+    "www.douyin.com",
+    "m.douyin.com",
+    "iesdouyin.com",
+    "www.iesdouyin.com",
+}
+_AWEME_ID = r"(\d{15,21})"
 
 # expand(platform, url)：由该平台的适配器把短链解析为完整链接（需要网络）。
 Expander = Callable[[str, str], str]
@@ -78,6 +86,36 @@ def _bilibili_short(url: str, expand: Expander) -> SourceRef:
     ref = _bilibili_video(target)
     if ref is None:
         raise UnsupportedLink(f"B站 短链没有指向视频：{url} → {target}")
+    return ref
+
+
+def _douyin_post(url: str) -> SourceRef | None:
+    """抖音作品（视频或图文）由作品 ID（aweme_id）唯一确定。
+
+    完整链接有 /video/<ID>、/note/<ID>（图文）、短链跳转到的 iesdouyin.com/share/<video|note|slides>/<ID>，
+    以及网页版弹窗的 ?modal_id=<ID>。规范链接：图文为 /note/<ID>，其余为 /video/<ID>。
+    """
+    parts = urlsplit(url)
+    if (parts.hostname or "").lower() not in _DOUYIN_HOSTS:
+        return None
+    if match := re.fullmatch(r"(?:/share)?/(video|note|slides)/" + _AWEME_ID + r"/?", parts.path):
+        kind, aweme_id = match.groups()
+    elif (modal := parse_qs(parts.query).get("modal_id")) and re.fullmatch(_AWEME_ID, modal[0]):
+        kind, aweme_id = "video", modal[0]
+    else:
+        raise UnsupportedLink(f"不是抖音作品链接：{url}")
+    path = "note" if kind in ("note", "slides") else "video"
+    return SourceRef("douyin", aweme_id, f"https://www.douyin.com/{path}/{aweme_id}")
+
+
+def _douyin_short(url: str, expand: Expander) -> SourceRef:
+    target = expand("douyin", url)
+    try:
+        ref = _douyin_post(target)
+    except UnsupportedLink:
+        ref = None
+    if ref is None:
+        raise UnsupportedLink(f"抖音短链没有指向作品：{url} → {target}")
     return ref
 
 
@@ -139,9 +177,11 @@ def normalize(url: str, expand: Expander) -> SourceRef:
     host = (urlsplit(url).hostname or "").lower()
     if SHORT_LINK_HOSTS.get(host) == "bilibili":
         return _bilibili_short(url, expand)
+    if SHORT_LINK_HOSTS.get(host) == "douyin":
+        return _douyin_short(url, expand)
     if host == WECHAT_HOST:
         return _wechat_article(url, expand)
-    ref = _bilibili_video(url)
+    ref = _bilibili_video(url) or _douyin_post(url)
     if ref is None:
         raise UnsupportedLink(f"无法识别的链接：{url}")
     return ref

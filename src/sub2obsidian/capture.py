@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -34,12 +34,19 @@ class Outcome:
     new: bool = False  # 本次新登记了来源
 
 
-def capture_text(text: str, vault: Path, adapters: Mapping[str, PlatformAdapter]) -> list[Outcome]:
+def capture_text(
+    text: str, vault: Path, adapters: Mapping[str, PlatformAdapter]
+) -> Iterator[Outcome]:
+    """逐个采集文本中的链接，每完成一个产出一个结果。
+
+    缺少本机工具时抛 MissingTool，之前产出的结果仍然有效。
+    """
     repo = SourceRepository(vault)
     urls = extract_urls(text)
     if not urls:
-        return [Outcome(f"没有找到链接：{text}", ok=False)]
-    return [_capture_url(url, repo, adapters) for url in urls]
+        yield Outcome(f"没有找到链接：{text}", ok=False)
+    for url in urls:
+        yield _capture_url(url, repo, adapters)
 
 
 def commit_changes(

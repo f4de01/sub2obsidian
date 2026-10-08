@@ -12,7 +12,7 @@ dependencies = [
     "markdownify>=1.2.3",
     "nvidia-cublas-cu12>=12.9.2.10 ; sys_platform == 'win32'",
     "playwright>=1.63.0",
-    "pyyaml>=6.0.3",
+    "pyyaml>=6.0.2",  # F2 固定 pyyaml==6.0.2
     "tomli-w>=1.0",
     "yt-dlp>=2026.8.19",
 ]

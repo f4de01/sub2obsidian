@@ -14,6 +14,14 @@ def test_login_bilibili_asks_credential_provider_to_log_in(run, credentials):
     assert "已登录 B站" in result.output
 
 
+def test_login_douyin_asks_credential_provider_to_log_in(run, credentials):
+    result = run.run("login", "douyin")
+
+    assert result.exit_code == 0, result.output
+    assert credentials.logins == ["douyin"]
+    assert "已登录 抖音" in result.output
+
+
 def test_login_rejects_unsupported_platform(run, credentials):
     result = run.run("login", "weibo")
 

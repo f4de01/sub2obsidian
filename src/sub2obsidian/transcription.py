@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import tempfile
 from collections import Counter
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Protocol
 
@@ -18,6 +18,11 @@ from sub2obsidian.credentials import CredentialError
 from sub2obsidian.platforms import FetchFailed, PlatformAdapter, SourceUnavailable
 from sub2obsidian.sources import Kind, RawMaterialExists, Source, SourceRepository, Status
 from sub2obsidian.transcript import Segment, Transcript
+
+
+# 没有平台字幕的平台：视频只能靠 ASR，capture 采集后当场转写。
+# 其他平台没有字幕的视频停在「已采集」，等 transcribe 批量转写。
+ASR_ONLY_PLATFORMS = {"douyin"}
 
 
 class TranscriptionFailed(Exception):
@@ -46,6 +51,25 @@ def transcribe_collected(
     repo = SourceRepository(vault)
     for source in repo.in_status(Status.COLLECTED):
         if source.kind is Kind.VIDEO:
+            yield _transcribe(source, repo, adapters[source.ref.platform], transcriber, terms)
+
+
+def transcribe_captured(
+    vault: Path,
+    outcomes: Iterable[Outcome],
+    adapters: Mapping[str, PlatformAdapter],
+    transcriber: Transcriber,
+    terms: Sequence[str],
+) -> Iterator[Outcome]:
+    """capture 刚采集到的视频中，只能靠 ASR 的（抖音）当场转写，每完成一条产出一个结果。"""
+    repo = SourceRepository(vault)
+    captured = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
+    for source in captured.values():
+        if (
+            source.ref.platform in ASR_ONLY_PLATFORMS
+            and source.kind is Kind.VIDEO
+            and source.status is Status.COLLECTED
+        ):
             yield _transcribe(source, repo, adapters[source.ref.platform], transcriber, terms)
 
 

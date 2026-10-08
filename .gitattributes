@@ -1,3 +1,4 @@
 src/sub2obsidian/assets/** -text
 tests/fixtures/wechat/** -text
 *.sh text eol=lf
+tests/fixtures/douyin/** -text

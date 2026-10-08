@@ -464,7 +464,7 @@ requires-dist = [
     { name = "markdownify", specifier = ">=1.2.3" },
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'win32'", specifier = ">=12.9.2.10" },
     { name = "playwright", specifier = ">=1.63.0" },
-    { name = "pyyaml", specifier = ">=6.0.3" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "tomli-w", specifier = ">=1.0" },
     { name = "yt-dlp", specifier = ">=2026.8.19" },
 ]
