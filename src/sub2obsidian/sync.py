@@ -17,7 +17,14 @@ from pathlib import Path
 
 import tomli_w
 
-from sub2obsidian.capture import Outcome, already_registered, collect, label, register
+from sub2obsidian.capture import (
+    Outcome,
+    already_registered,
+    changed_sources,
+    collect,
+    label,
+    register,
+)
 from sub2obsidian.inbox import Inbox, InboxError, InboxNotConfigured
 from sub2obsidian.links import UnsupportedLink, extract_urls
 from sub2obsidian.platforms import AdapterError, FetchFailed, PlatformAdapter
@@ -111,15 +118,14 @@ def _read_inbox(
 
 def summarize(outcomes: Sequence[Outcome]) -> str:
     """汇总：新增、各状态的数量，失效与失败的来源及原因。"""
-    # 同一来源先采集后转写会有多个结果，以最后一个为准
-    final = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
-    counts = Counter(source.status for source in final.values())
+    final = changed_sources(outcomes)
+    counts = Counter(source.status for source in final)
     failures = [o.message for o in outcomes if not o.ok]
     parts = [f"新增来源 {sum(o.new for o in outcomes)}"]
     parts += [f"{status} {counts[status]}" for status in (Status.COLLECTED, Status.TRANSCRIBED)]
     parts += [f"已失效 {counts[Status.UNAVAILABLE]}", f"失败 {len(failures)}"]
     lines = [f"sync 汇总：{'，'.join(parts)}"]
-    unavailable = [s for s in final.values() if s.status is Status.UNAVAILABLE]
+    unavailable = [s for s in final if s.status is Status.UNAVAILABLE]
     if unavailable:
         lines.append("已失效：")
         lines += [f"  - {label(s)}：{s.meta['失败原因']}" for s in unavailable]

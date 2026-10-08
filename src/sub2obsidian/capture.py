@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -18,6 +18,7 @@ from sub2obsidian.platforms import (
     SourceUnavailable,
 )
 from sub2obsidian.sources import Kind, Origin, Source, SourceRepository, Status
+from sub2obsidian.tools import MissingTool
 
 TRANSCRIPT_FILE = "口播稿.md"
 BODY_FILE = "正文.md"
@@ -46,16 +47,20 @@ def capture_text(
     if not urls:
         yield Outcome(f"没有找到链接：{text}", ok=False)
     for url in urls:
-        yield _capture_url(url, repo, adapters)
+        yield from _capture_url(url, repo, adapters)
+
+
+def changed_sources(outcomes: Iterable[Outcome]) -> list[Source]:
+    """结果中改动了的来源；同一来源（出现多次、或先采集后转写）只算一次，取最后的状态。"""
+    by_directory = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
+    return list(by_directory.values())
 
 
 def commit_changes(
     vault: Path, outcomes: list[Outcome], *, command: str = "capture", verb: str = "采集"
 ) -> None:
     """把本次对原始材料的改动单独提交一次 git，不卷入 Wiki 与用户的其他改动。"""
-    # 同一来源在一段文本里出现多次时只算一次
-    by_directory = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
-    changed = list(by_directory.values())
+    changed = changed_sources(outcomes)
     if not changed:
         return
     lines = [label(source) for source in changed]
@@ -70,15 +75,23 @@ def commit_changes(
 
 def _capture_url(
     url: str, repo: SourceRepository, adapters: Mapping[str, PlatformAdapter]
-) -> Outcome:
+) -> Iterator[Outcome]:
     try:
-        source, _ = register(url, repo, adapters)
+        source, created = register(url, repo, adapters)
     except (UnsupportedLink, AdapterError) as error:
-        return Outcome(str(error), ok=False)
+        yield Outcome(str(error), ok=False)
+        return
     if source.status is not Status.APPROVED:
         # 只有停在「已通过」的来源（上次采集失败）才重试
-        return already_registered(source)
-    return collect(source, repo, adapters[source.ref.platform])
+        yield already_registered(source)
+        return
+    try:
+        outcome = collect(source, repo, adapters[source.ref.platform])
+    except MissingTool:
+        if created:  # 整批中止前交出新登记的来源，让它的存根随本次提交落盘
+            yield Outcome(f"新来源：{source.ref.display}", ok=True, changed=source, new=True)
+        raise
+    yield outcome
 
 
 def label(source: Source) -> str:

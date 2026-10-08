@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Protocol
 
 from sub2obsidian import transcript
-from sub2obsidian.capture import TRANSCRIPT_FILE, Outcome
+from sub2obsidian.capture import TRANSCRIPT_FILE, Outcome, changed_sources
 from sub2obsidian.credentials import CredentialError
 from sub2obsidian.platforms import FetchFailed, PlatformAdapter, SourceUnavailable
 from sub2obsidian.sources import Kind, RawMaterialExists, Source, SourceRepository, Status
@@ -63,8 +63,7 @@ def transcribe_captured(
 ) -> Iterator[Outcome]:
     """capture 刚采集到的视频中，只能靠 ASR 的（抖音）当场转写，每完成一条产出一个结果。"""
     repo = SourceRepository(vault)
-    captured = {o.changed.directory: o.changed for o in outcomes if o.changed is not None}
-    for source in captured.values():
+    for source in changed_sources(outcomes):
         if (
             source.ref.platform in ASR_ONLY_PLATFORMS
             and source.kind is Kind.VIDEO

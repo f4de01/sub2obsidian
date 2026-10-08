@@ -394,3 +394,24 @@ def test_missing_ffmpeg_stops_capture_but_collected_post_is_committed(
     assert read_metadata(vault, "douyin", VIDEO_ID)["来源状态"] == "已采集"
     assert git(vault, "log", "-1", "--format=%s").startswith("capture:")
     assert git(vault, "status", "--porcelain") == ""
+
+
+def test_missing_f2_stops_capture_and_the_registered_source_is_committed(
+    run, douyin, initialized
+):
+    from sub2obsidian.tools import MissingTool
+
+    vault = initialized
+
+    def no_f2(ref):
+        raise MissingTool("未安装 F2")
+
+    douyin.fetch = no_f2
+
+    result = run.run("capture", VIDEO_LINK)
+
+    assert result.exit_code != 0
+    assert "capture 中止：未安装 F2" in result.output
+    assert read_metadata(vault, "douyin", VIDEO_ID)["来源状态"] == "已通过"
+    assert git(vault, "log", "-1", "--format=%s").startswith("capture:")
+    assert git(vault, "status", "--porcelain") == ""
