@@ -47,6 +47,7 @@ sub2obsidian init "E:\笔记\知识库"  # 指定路径
 
 - 建立目录骨架：`原始材料/`、`Wiki/来源/`、`Wiki/概念/`、`Wiki/综述/`、`Wiki/主题域/`、`我的笔记/`、`附件/`；
 - 写入 `index.md`、`log.md`，以及由 Schema 模板渲染的 `CLAUDE.md` 与 `AGENTS.md`；
+- 写入 Dataview 状态页 `来源状态.md`：各来源状态的数量，以及待编译、待转写、待筛、采集失败、已失效的来源清单；
 - 预置 `.obsidian`：附件目录为 `附件/`、使用 wikilink，Dataview 插件已安装并启用；
 - 把知识库设为 git 仓库（`.gitignore` 排除 Obsidian 工作区状态），首次初始化提交一次；
 - 通过 `obsidian://open?path=…` 让 Obsidian 登记并打开该知识库。
@@ -112,6 +113,22 @@ sub2obsidian transcribe
 [transcribe]
 terms = ["MCP", "RAG", "检索增强生成", "Claude Code"]
 ```
+
+## 编译
+
+编译不写代码（ADR-0001）：在知识库目录中开启 agent 会话（如 Claude Code），说「编译」。agent 按知识库中的 Schema（`CLAUDE.md` / `AGENTS.md`）把所有可编译的来源编译进 Wiki：写来源页，新建或改写概念页（每条论断带出处，B站 出处可跳到原视频对应秒数），记录分歧，更新 `index.md` 与 `log.md`，做轻量体检，最后以一次 git 提交结束。
+
+agent 编译时用到两条命令，你也可以直接用：
+
+```powershell
+sub2obsidian status                          # 各来源状态的数量，以及可编译的来源
+sub2obsidian mark-compiled bilibili/BV1GJ411x7h7 wechat/AbCdEf123   # 把来源转为「已编译」
+```
+
+- 「可编译」= 文章或图文「已采集」，或视频「已转写」。
+- `mark-compiled` 接受 `status` 列出的 `<平台>/<平台内ID>`，也接受来源在 `原始材料/` 中的目录或来源的链接（短链除外）。只要有一个来源找不到或不可编译，就整批拒绝、一个都不改。
+- `mark-compiled` 不单独提交 git：来源状态的改动由 agent 与 Wiki 的改动一起放进本次编译的提交。
+- Schema 初始化后归知识库所有；想改进编译质量就改知识库里的 Schema，重跑 `init` 不会覆盖它。
 
 ## 用户配置目录
 

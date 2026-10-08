@@ -170,3 +170,35 @@ def test_rerun_init_restores_files_the_user_chose_to_ignore(run, vault: Path):
 
     assert result.exit_code == 0, result.output
     assert (vault / ".obsidian" / "app.json").is_file()
+
+
+def dataview_queries(page: str) -> list[str]:
+    blocks = page.split("```dataview\n")[1:]
+    return [block.partition("```")[0] for block in blocks]
+
+
+def test_init_writes_dataview_status_page_counting_sources_and_listing_todos(run, vault: Path):
+    run.run("init", str(vault))
+
+    page = (vault / "来源状态.md").read_text(encoding="utf-8")
+    queries = dataview_queries(page)
+    # 各状态的数量：按元数据中的来源状态分组计数
+    assert any("GROUP BY 来源状态" in query and "length(rows)" in query for query in queries)
+    assert all('FROM "原始材料"' in query for query in queries)
+    # 待办：待编译、待转写、待筛、采集失败各有一张表
+    for todo in ["## 待编译", "## 待转写", "## 待筛", "## 采集失败"]:
+        assert todo in page
+    assert len(queries) >= 5
+    assert git(vault, "ls-files", "来源状态.md").strip() == "来源状态.md"
+
+
+def test_schema_tells_the_agent_to_compile_through_status_and_mark_compiled(run, vault: Path):
+    run.run("init", str(vault))
+
+    schema = (vault / "CLAUDE.md").read_text(encoding="utf-8")
+    assert "版本 1" in schema
+    assert "sub2obsidian status --vault ." in schema
+    assert "sub2obsidian mark-compiled --vault ." in schema
+    # 出处：B站 时间戳可跳转；批注 callout 不得改动
+    assert "?t=秒数" in schema
+    assert "> [!我]" in schema

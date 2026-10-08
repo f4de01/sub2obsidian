@@ -19,6 +19,11 @@ class SourceRef:
     url: str  # 规范链接
 
     @property
+    def key(self) -> str:
+        """「平台/平台内ID」：命令行中指称来源的写法，也是它在原始材料区的相对目录。"""
+        return f"{self.platform}/{self.platform_id}"
+
+    @property
     def display(self) -> str:
         return f"{PLATFORM_NAMES.get(self.platform, self.platform)} {self.platform_id}"
 

@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from sub2obsidian.capture import Outcome, capture_text, commit_changes
+from sub2obsidian.compilation import Refused, mark_compiled, status_report
 from sub2obsidian.config import UserConfig
 from sub2obsidian.credentials import LOGIN_PLATFORMS, CredentialError, CredentialProvider
 from sub2obsidian.git import GitError
@@ -131,6 +132,44 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
     click.echo(summarize(outcomes) if outcomes else "没有待转写的来源")
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
+
+
+@cli.command()
+@vault_option
+def status(vault_path: Path | None) -> None:
+    """按来源状态汇总来源数量，并列出可编译的来源（编译时由 agent 读取）。"""
+    vault = _initialized_vault(vault_path)
+    report = status_report(vault)
+    click.echo("来源状态：")
+    for source_status, count in report.counts.items():
+        click.echo(f"  {source_status} {count}")
+    if not report.compilable:
+        click.echo("可编译的来源：无")
+        return
+    click.echo(f"可编译的来源（{len(report.compilable)}）：")
+    for source in report.compilable:
+        click.echo(f"  {source.ref.key}  {source.kind}  {source.title}")
+    click.echo(
+        f"原始材料在 {RAW_DIR}/<平台>/<平台内ID>/；"
+        "编译完成后执行 sub2obsidian mark-compiled <平台>/<平台内ID>…"
+    )
+
+
+@cli.command("mark-compiled")
+@click.argument("sources", nargs=-1, required=True)
+@vault_option
+def mark_compiled_command(sources: tuple[str, ...], vault_path: Path | None) -> None:
+    """把编译完成的来源转为「已编译」（agent 在编译结束、git 提交之前调用）。
+
+    SOURCES 用 status 列出的「平台/平台内ID」指称来源。
+    """
+    vault = _initialized_vault(vault_path)
+    try:
+        compiled = mark_compiled(vault, sources)
+    except Refused as error:
+        raise click.ClickException(f"没有改动任何来源状态：\n{error}") from error
+    for source in compiled:
+        click.echo(f"已编译：{source.title}（{source.ref.key}）")
 
 
 def main() -> None:

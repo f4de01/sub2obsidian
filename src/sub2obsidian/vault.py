@@ -11,7 +11,7 @@ from string import Template
 
 from sub2obsidian import git
 
-SCHEMA_VERSION = "0.1"
+SCHEMA_VERSION = "1"
 
 RAW_DIR = "原始材料"
 SOURCES_DIR = "Wiki/来源"
@@ -20,6 +20,7 @@ SYNTHESES_DIR = "Wiki/综述"
 DOMAINS_DIR = "Wiki/主题域"
 NOTES_DIR = "我的笔记"
 ATTACHMENTS_DIR = "附件"
+STATUS_PAGE = "来源状态.md"
 
 DIRECTORIES = [
     RAW_DIR,
@@ -34,8 +35,9 @@ DIRECTORIES = [
 ASSETS = files("sub2obsidian") / "assets"
 
 
-def render_schema() -> str:
-    template = Template((ASSETS / "schema_template.md").read_text(encoding="utf-8"))
+def _render(asset: str) -> str:
+    """渲染随包的模板：$-占位符换成知识库各区的位置（字面的 $ 在模板中写作 $$）。"""
+    template = Template((ASSETS / asset).read_text(encoding="utf-8"))
     return template.substitute(
         schema_version=SCHEMA_VERSION,
         raw_dir=RAW_DIR,
@@ -45,7 +47,12 @@ def render_schema() -> str:
         domains_dir=DOMAINS_DIR,
         notes_dir=NOTES_DIR,
         attachments_dir=ATTACHMENTS_DIR,
+        status_page=STATUS_PAGE,
     )
+
+
+def render_schema() -> str:
+    return _render("schema_template.md")
 
 
 def _index() -> str:
@@ -101,6 +108,7 @@ def _skeleton_files(today: dt.date) -> dict[str, bytes]:
         "log.md": _text(_log(today)),
         "CLAUDE.md": schema,
         "AGENTS.md": schema,
+        STATUS_PAGE: _text(_render("status_page.md")),
         ".gitignore": _text(GITIGNORE),
         **_obsidian_config(),
     }

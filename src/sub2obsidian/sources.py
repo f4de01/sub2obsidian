@@ -138,10 +138,14 @@ class SourceRepository:
     def find(self, ref: SourceRef) -> Source | None:
         return self._load(self.directory(ref))
 
+    def all(self) -> list[Source]:
+        """全部来源，按平台与平台内 ID 排序。"""
+        found = (self._load(directory) for directory in sorted(self.raw.glob("*/*")))
+        return [source for source in found if source is not None]
+
     def in_status(self, status: Status) -> list[Source]:
         """处于某来源状态的全部来源，按平台与平台内 ID 排序。"""
-        found = (self._load(directory) for directory in sorted(self.raw.glob("*/*")))
-        return [source for source in found if source is not None and source.status is status]
+        return [source for source in self.all() if source.status is status]
 
     def _load(self, directory: Path) -> Source | None:
         metadata = directory / METADATA_FILE
