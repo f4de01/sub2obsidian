@@ -16,7 +16,7 @@ from sub2obsidian import transcript
 from sub2obsidian.capture import TRANSCRIPT_FILE, Outcome
 from sub2obsidian.credentials import CredentialError
 from sub2obsidian.platforms import FetchFailed, PlatformAdapter, SourceUnavailable
-from sub2obsidian.sources import Kind, Source, SourceRepository, Status
+from sub2obsidian.sources import Kind, RawMaterialExists, Source, SourceRepository, Status
 from sub2obsidian.transcript import Segment, Transcript
 
 
@@ -49,7 +49,7 @@ def transcribe_collected(
             yield _transcribe(source, repo, adapters[source.ref.platform], transcriber, terms)
 
 
-def summary(outcomes: Sequence[Outcome]) -> str:
+def summarize(outcomes: Sequence[Outcome]) -> str:
     counts = Counter(
         "失败" if not outcome.ok else str(outcome.changed.status)
         for outcome in outcomes
@@ -72,17 +72,17 @@ def _transcribe(
         with tempfile.TemporaryDirectory(prefix="sub2obsidian-") as temporary:
             audio = adapter.download_audio(ref, Path(temporary))
             segments = transcriber.transcribe(audio, terms)
+        rendered = transcript.render(Transcript(transcriber.origin, segments), source.title)
+        repo.add_file(source, TRANSCRIPT_FILE, rendered.encode("utf-8"))
     except SourceUnavailable as error:
         repo.transition(source, Status.UNAVAILABLE, reason=str(error))
         return Outcome(f"来源已失效：{ref.display}，{error}", ok=True, changed=source)
-    except (FetchFailed, CredentialError, TranscriptionFailed) as error:
+    except (FetchFailed, CredentialError, TranscriptionFailed, RawMaterialExists) as error:
         repo.record_failure(source, str(error))
         return Outcome(
             f"转写失败：{ref.display}，{error}（来源保持「{source.status}」，可重试）",
             ok=False,
             changed=source,
         )
-    rendered = transcript.render(Transcript(transcriber.origin, segments), source.title)
-    repo.add_file(source, TRANSCRIPT_FILE, rendered.encode("utf-8"))
     repo.transition(source, Status.TRANSCRIBED)
     return Outcome(f"已转写：{source.title}（{ref.display}）", ok=True, changed=source)

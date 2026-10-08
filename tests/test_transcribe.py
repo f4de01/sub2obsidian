@@ -312,3 +312,23 @@ def test_sources_transcribed_before_the_batch_stopped_are_kept_and_committed(
     assert read_metadata(vault, "bilibili", OTHER)["来源状态"] == "已转写"
     assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已采集"
     assert commit_subjects(vault)[0] == f"transcribe: B站 {OTHER} 另一个视频"
+
+
+def test_existing_different_transcript_fails_only_that_source(
+    run, bilibili, transcriber, initialized
+):
+    """原始材料只增不改：已有一份不同的口播稿时不覆盖，记为该来源的失败。"""
+    vault = initialized
+    capture_without_subtitles(run, bilibili, transcriber, BV)
+    capture_without_subtitles(run, bilibili, transcriber, OTHER, title="另一个视频")
+    existing = source_dir(vault, "bilibili", OTHER) / "口播稿.md"
+    existing.write_text("上次留下的口播稿\n", encoding="utf-8")
+
+    result = run.run("transcribe")
+
+    assert result.exit_code != 0
+    assert existing.read_text(encoding="utf-8") == "上次留下的口播稿\n"
+    meta = read_metadata(vault, "bilibili", OTHER)
+    assert meta["来源状态"] == "已采集"
+    assert "只增不改" in meta["失败原因"]
+    assert read_metadata(vault, "bilibili", BV)["来源状态"] == "已转写"

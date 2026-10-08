@@ -2,7 +2,7 @@
 
 首次运行时自动从 Hugging Face 下载模型（约 1.6 GB）到其缓存目录；下载不了时可设置
 HF_ENDPOINT=https://hf-mirror.com 后重试。Windows 上 CUDA 所需的 cuBLAS 由 nvidia-cublas-cu12
-包提供（cuDNN 随 ctranslate2 自带），这里把它的 DLL 目录登记给进程。
+包提供（cuDNN 随 ctranslate2 自带），这里把它的 DLL 目录加进 PATH。
 """
 
 from __future__ import annotations
@@ -27,22 +27,23 @@ STYLE_HINT = "以下是普通话的句子，使用简体中文和标点。"
 # 这些 GPU 运行库错误说明本机环境有问题，而不是某段音频有问题
 _GPU_ERRORS = ("cuda", "cublas", "cudnn")
 
-_dll_directories: list[Any] = []
-
 
 def _register_cuda_libraries() -> None:
-    if sys.platform != "win32" or _dll_directories:
+    """把 nvidia-cublas-cu12 的 DLL 目录放到 PATH 最前面。
+
+    ctranslate2 在第一次推理时才加载 cuBLAS，走默认搜索顺序，只认 PATH，不认 os.add_dll_directory。
+    """
+    if sys.platform != "win32":
         return
     try:
         import nvidia.cublas  # type: ignore[import-not-found]
     except ImportError:
         return
+    path = os.environ.get("PATH", "")
     for root in nvidia.cublas.__path__:
-        library = Path(root) / "bin"
-        if library.is_dir():
-            _dll_directories.append(os.add_dll_directory(str(library)))
-            # ctranslate2 用时才按默认顺序加载 cuBLAS，只认 PATH，不认 add_dll_directory
-            os.environ["PATH"] = f"{library}{os.pathsep}{os.environ.get('PATH', '')}"
+        library = str(Path(root) / "bin")
+        if Path(library).is_dir() and library not in path.split(os.pathsep):
+            os.environ["PATH"] = path = f"{library}{os.pathsep}{path}"
 
 
 def hint(terms: Sequence[str]) -> str:
@@ -67,15 +68,11 @@ class FasterWhisperTranscriber:
         self,
         model: str = MODEL,
         *,
-        device: str = DEVICE,
-        compute_type: str = COMPUTE_TYPE,
         local_files_only: bool = False,
         cache_dir: Path | None = None,
     ) -> None:
         self.origin = f"faster-whisper {model}"
         self.model = model
-        self.device = device
-        self.compute_type = compute_type
         self.local_files_only = local_files_only
         self.cache_dir = cache_dir
         self._loaded: Any = None
@@ -100,10 +97,10 @@ class FasterWhisperTranscriber:
                 "（约 1.6 GB）；下载不了时可设置环境变量 HF_ENDPOINT=https://hf-mirror.com 后重试"
             ) from error
         try:
-            self._loaded = WhisperModel(path, device=self.device, compute_type=self.compute_type)
+            self._loaded = WhisperModel(path, device=DEVICE, compute_type=COMPUTE_TYPE)
         except (RuntimeError, ValueError) as error:
             raise MissingTool(
-                f"无法在 GPU 上加载转写模型 {self.model}（{self.device}，{self.compute_type}）：{error}"
+                f"无法在 GPU 上加载转写模型 {self.model}（{DEVICE}，{COMPUTE_TYPE}）：{error}"
             ) from error
         return self._loaded
 

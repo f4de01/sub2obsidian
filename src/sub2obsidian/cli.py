@@ -16,8 +16,7 @@ from sub2obsidian.launcher import Launcher, SystemLauncher, obsidian_open_uri
 from sub2obsidian.links import PLATFORM_NAMES
 from sub2obsidian.platforms import PlatformAdapter
 from sub2obsidian.tools import MissingTool
-from sub2obsidian.transcription import Transcriber, transcribe_collected
-from sub2obsidian.transcription import summary as transcription_summary
+from sub2obsidian.transcription import Transcriber, summarize, transcribe_collected
 from sub2obsidian.vault import RAW_DIR, init_vault
 
 
@@ -129,7 +128,7 @@ def transcribe(ports: Ports, vault_path: Path | None) -> None:
         raise click.ClickException(f"口播稿已写入，但 git 提交失败：{error}") from error
     if stopped is not None:
         raise click.ClickException(f"转写中止：{stopped}")
-    click.echo(transcription_summary(outcomes) if outcomes else "没有待转写的来源")
+    click.echo(summarize(outcomes) if outcomes else "没有待转写的来源")
     if not all(outcome.ok for outcome in outcomes):
         raise SystemExit(1)
 
