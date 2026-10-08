@@ -47,14 +47,22 @@ def ensure_repo(root: Path) -> bool:
 
 
 def _has_identity(root: Path) -> bool:
-    try:
-        return bool(_git(root, "config", "user.email").strip())
-    except GitError:
-        return False
+    return all(
+        _run(root, "config", key).stdout.strip() for key in ("user.name", "user.email")
+    )
+
+
+def _ignored(root: Path, paths: Sequence[str]) -> set[str]:
+    return set(_run(root, "check-ignore", "--no-index", "--", *paths).stdout.splitlines())
 
 
 def commit_paths(root: Path, paths: Sequence[str], message: str) -> None:
-    """只提交给定路径（相对 root），不卷入用户在知识库中的其他改动；路径无变化时不提交。"""
+    """只提交给定路径（相对 root），不卷入用户在知识库中的其他改动。
+
+    被 .gitignore 排除的路径与没有变化的路径不提交。
+    """
+    ignored = _ignored(root, paths) if paths else set()
+    paths = [path for path in paths if path not in ignored]
     if not paths:
         return
     _git(root, "add", "--", *paths)

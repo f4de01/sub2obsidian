@@ -158,3 +158,15 @@ def test_init_refuses_a_path_that_is_a_file(run, launcher, tmp_path: Path):
     assert result.exit_code != 0
     assert "不是目录" in result.output
     assert launcher.opened == []
+
+
+def test_rerun_init_restores_files_the_user_chose_to_ignore(run, vault: Path):
+    run.run("init", str(vault))
+    with (vault / ".gitignore").open("a", encoding="utf-8") as gitignore:
+        gitignore.write(".obsidian/\n")
+    (vault / ".obsidian" / "app.json").unlink()
+
+    result = run.run("init", str(vault))
+
+    assert result.exit_code == 0, result.output
+    assert (vault / ".obsidian" / "app.json").is_file()

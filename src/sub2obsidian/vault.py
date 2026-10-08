@@ -56,7 +56,7 @@ def _log(today: dt.date) -> str:
     return f"# 日志\n\n## [{today.isoformat()}] init | 初始化知识库\n"
 
 
-# Obsidian 的工作区状态随每次打开而变，不进版本库。
+# Obsidian 的工作区状态随每次打开而变，与回收站、系统杂项一起不进版本库。
 GITIGNORE = """.obsidian/workspace.json
 .obsidian/workspace-mobile.json
 .trash/
@@ -114,12 +114,12 @@ class InitResult:
 
 def init_vault(root: Path) -> InitResult:
     """新建或补全知识库：只创建缺失的目录与文件，从不覆盖已有文件。"""
-    created: list[str] = []
+    created_dirs: list[str] = []
     for directory in DIRECTORIES:
         target = root / directory
         if not target.is_dir():
             target.mkdir(parents=True)
-            created.append(directory + "/")
+            created_dirs.append(directory + "/")
     created_files: list[str] = []
     for relative, content in _skeleton_files(dt.date.today()).items():
         target = root / relative
@@ -131,4 +131,4 @@ def init_vault(root: Path) -> InitResult:
     new_vault = git.ensure_repo(root)
     message = "init: 初始化知识库" if new_vault else "init: 补齐知识库缺失项"
     git.commit_paths(root, created_files, message)
-    return InitResult(new_vault=new_vault, created=created + created_files)
+    return InitResult(new_vault=new_vault, created=created_dirs + created_files)

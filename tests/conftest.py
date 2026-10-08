@@ -26,10 +26,9 @@ class Cli:
     launcher: FakeLauncher
 
     def run(self, *args: str) -> Result:
-        result = CliRunner().invoke(
+        return CliRunner().invoke(
             cli, list(args), obj=Ports(launcher=self.launcher), catch_exceptions=False
         )
-        return result
 
 
 @pytest.fixture(autouse=True)
