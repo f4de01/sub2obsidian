@@ -369,14 +369,16 @@ def graph_preset_command(vault_path: Path | None) -> None:
     if state is GraphState.ALREADY:
         click.echo("关系图谱已是预置设置，无需写入")
         return
-    if state is GraphState.CUSTOMISED:
+    if state in (GraphState.UNREADABLE, GraphState.CUSTOMISED):
+        reason = "读不懂（不是 JSON 对象）" if state is GraphState.UNREADABLE else "中是你调过的图谱设置"
         click.echo(
-            f"{GRAPH_SETTINGS} 中是你调过的图谱设置，未改动。"
+            f"{GRAPH_SETTINGS} {reason}，未改动。"
             f"想换成预置：在 Obsidian 中关闭关系图谱，删除 {GRAPH_SETTINGS} 后重新执行本命令"
         )
         return
     click.echo(
-        f"已写入图谱预置 {GRAPH_SETTINGS} 并提交：只显示 Wiki 与我的笔记，按页面类型着色。\n"
+        f"已写入图谱预置 {GRAPH_SETTINGS} 并提交：只显示 Wiki 与我的笔记，按页面类型着色——"
+        "主题域朱红、子主题紫红、概念页蓝、综述页蓝绿、来源页灰、我的笔记橙。\n"
         "请在 Obsidian 中关闭关系图谱后重新打开；仍是旧样子时（Obsidian 还用着内存里的旧设置），"
         "退出 Obsidian，重新执行本命令，再打开 Obsidian 与关系图谱。"
     )

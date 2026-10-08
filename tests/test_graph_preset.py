@@ -60,6 +60,8 @@ def test_graph_left_at_obsidian_default_gets_the_preset(run, vault: Path, tmp_pa
     assert result.exit_code == 0, result.output
     assert graph_settings(vault) == preset(tmp_path, run)
     assert "已写入图谱预置" in result.output
+    for legend in ["主题域朱红", "子主题紫红", "概念页蓝", "综述页蓝绿", "来源页灰", "我的笔记橙"]:
+        assert legend in result.output, legend
     assert "关闭" in result.output and "重新打开" in result.output
     assert commit_subjects(vault)[0] == "graph-preset: 写入关系图谱预置"
     assert git(vault, "status", "--porcelain") == ""
@@ -93,6 +95,7 @@ def test_customised_graph_settings_are_never_overwritten(run, vault: Path):
         {**OBSIDIAN_DEFAULT, "search": "path:Wiki/概念/"},
         {**OBSIDIAN_DEFAULT, "colorGroups": [{"query": "tag:#AI", "color": {"a": 1, "rgb": 255}}]},
         {**OBSIDIAN_DEFAULT, "repelStrength": 12},
+        {**OBSIDIAN_DEFAULT, "linkStrength": True},
         {**OBSIDIAN_DEFAULT, "某个新版 Obsidian 才有的设置": True},
     ]:
         write_graph(vault, customised)
@@ -113,7 +116,8 @@ def test_unreadable_graph_settings_are_left_alone(run, vault: Path):
 
     assert result.exit_code == 0, result.output
     assert (vault / GRAPH).read_text(encoding="utf-8") == '{"search": '
-    assert "未改动" in result.output
+    assert "读不懂" in result.output and "未改动" in result.output
+    assert "调过" not in result.output
 
 
 def test_graph_already_preset_needs_nothing(run, vault: Path):
@@ -124,6 +128,17 @@ def test_graph_already_preset_needs_nothing(run, vault: Path):
     assert result.exit_code == 0, result.output
     assert "已是预置" in result.output
     assert len(commit_subjects(vault)) == 1
+
+
+def test_preset_with_settings_from_a_newer_obsidian_counts_as_preset(run, vault: Path):
+    """新版 Obsidian 往预置里补了自己的新设置，仍算预置，不当作用户调过的。"""
+    run.run("init", str(vault))
+    write_graph(vault, {**graph_settings(vault), "某个新版 Obsidian 才有的设置": 0, "scale": 1.7})
+
+    result = run.run("graph-preset", "--vault", str(vault))
+
+    assert result.exit_code == 0, result.output
+    assert "已是预置" in result.output
 
 
 def test_graph_preset_on_an_uninitialised_vault_asks_for_init(run, vault: Path):

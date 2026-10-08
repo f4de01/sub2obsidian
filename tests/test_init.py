@@ -413,15 +413,15 @@ def test_init_presets_the_graph_to_show_only_wiki_and_notes_coloured_by_page_typ
     assert graph["hideUnresolved"] is True
     assert graph["showAttachments"] is False
     assert graph["showTags"] is False
-    # 按页面类型着色：主题域与子主题醒目（暖色），概念页主色，来源页灰色，综述页单独一色
+    # 按页面类型着色：主题域与子主题醒目且色盲也能分清，概念页主色，来源页灰色，综述页单独一色
     colours = {group["query"]: group["color"] for group in graph["colorGroups"]}
     assert colours == {
         "path:Wiki/主题域/": {"a": 1, "rgb": 0xD55E00},
-        "path:Wiki/子主题/": {"a": 1, "rgb": 0xE69F00},
+        "path:Wiki/子主题/": {"a": 1, "rgb": 0xCC79A7},
         "path:Wiki/概念/": {"a": 1, "rgb": 0x0072B2},
         "path:Wiki/综述/": {"a": 1, "rgb": 0x009E73},
         "path:Wiki/来源/": {"a": 1, "rgb": 0x9E9E9E},
-        "path:我的笔记/": {"a": 1, "rgb": 0xCC79A7},
+        "path:我的笔记/": {"a": 1, "rgb": 0xE69F00},
     }
     assert git(vault, "ls-files", ".obsidian/graph.json").strip() == ".obsidian/graph.json"
 

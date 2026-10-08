@@ -55,7 +55,7 @@ sub2obsidian init "E:\笔记\知识库"  # 指定路径
 - 写入 `index.md`、`log.md`，以及由 Schema 模板渲染的 `CLAUDE.md` 与 `AGENTS.md`；
 - 写入 Dataview 状态页 `来源状态.md`：各来源状态的数量，以及待编译、待转写、待筛、采集失败、已失效的来源清单；
 - 预置 `.obsidian`：附件目录为 `附件/`、使用 wikilink，Dataview 插件已安装并启用；
-- 预置关系图谱（`.obsidian/graph.json`）：只显示 `Wiki/` 与 `我的笔记/`（原始材料、`CLAUDE.md` / `AGENTS.md`、`index.md`、`log.md`、来源状态、待筛清单都不进图谱），隐藏没有页面的链接（幽灵节点）；按页面类型着色（色盲友好的 Okabe-Ito 配色）：主题域朱红、子主题橙色、概念页蓝色、综述页蓝绿、来源页灰色、我的笔记紫红；细线、节点间距加大。之后可以在 Obsidian 里随意调整；
+- 预置关系图谱（`.obsidian/graph.json`）：只显示 `Wiki/` 与 `我的笔记/`（原始材料、`CLAUDE.md` / `AGENTS.md`、`index.md`、`log.md`、来源状态、待筛清单都不进图谱），隐藏没有页面的链接（幽灵节点）；按页面类型着色（色盲友好的 Okabe-Ito 配色）：主题域朱红、子主题紫红（与朱红在色盲眼中也分得清）、概念页蓝色、综述页蓝绿、来源页灰色、我的笔记橙色；细线、节点间距加大。之后可以在 Obsidian 里随意调整；
 - 把知识库设为 git 仓库（`.gitignore` 排除 Obsidian 工作区状态），首次初始化提交一次；
 - 在 Obsidian 中打开该知识库：先只读检查 `%APPDATA%\obsidian\obsidian.json`，知识库已在 Obsidian 登记过时，通过 `obsidian://open?path=…` 直接打开；尚未登记（或该文件不存在、无法解析）时不触发 URI——这个 URI 只能打开已登记的目录，不会登记新目录——而是在终端打印一次性的手动步骤：Obsidian 左下角仓库名 →「管理仓库…」→「打开本地仓库」→ 选择该路径 → 信任插件。手动打开一次之后，再执行 `init` 就会直接打开。本工具从不改写 `obsidian.json`。
 

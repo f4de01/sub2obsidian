@@ -18,11 +18,11 @@ SCHEMA_VERSION = 7
 
 RAW_DIR = "原始材料"
 WIKI_DIR = "Wiki"
-SOURCES_DIR = "Wiki/来源"
-CONCEPTS_DIR = "Wiki/概念"
-SYNTHESES_DIR = "Wiki/综述"
-DOMAINS_DIR = "Wiki/主题域"
-SUBTOPICS_DIR = "Wiki/子主题"
+SOURCES_DIR = f"{WIKI_DIR}/来源"
+CONCEPTS_DIR = f"{WIKI_DIR}/概念"
+SYNTHESES_DIR = f"{WIKI_DIR}/综述"
+DOMAINS_DIR = f"{WIKI_DIR}/主题域"
+SUBTOPICS_DIR = f"{WIKI_DIR}/子主题"
 NOTES_DIR = "我的笔记"
 ATTACHMENTS_DIR = "附件"
 STATUS_PAGE = "来源状态.md"
@@ -110,7 +110,7 @@ def _obsidian_config() -> dict[str, bytes]:
     return config
 
 
-def _colour(folder: str, rgb: int) -> dict[str, object]:
+def _colour_group(folder: str, rgb: int) -> dict[str, object]:
     return {"query": f"path:{folder}/", "color": {"a": 1, "rgb": rgb}}
 
 
@@ -123,12 +123,12 @@ GRAPH_PRESET: dict[str, object] = {
     "hideUnresolved": True,  # 示例链接、断链形成的幽灵节点不显示
     "showOrphans": True,  # 孤立页留在图上，便于发现
     "colorGroups": [
-        _colour(DOMAINS_DIR, 0xD55E00),  # 主题域：朱红，醒目
-        _colour(SUBTOPICS_DIR, 0xE69F00),  # 子主题：橙，醒目
-        _colour(CONCEPTS_DIR, 0x0072B2),  # 概念页：蓝，主色
-        _colour(SYNTHESES_DIR, 0x009E73),  # 综述页：蓝绿
-        _colour(SOURCES_DIR, 0x9E9E9E),  # 来源页：灰，退后
-        _colour(NOTES_DIR, 0xCC79A7),  # 我的笔记：紫红
+        _colour_group(DOMAINS_DIR, 0xD55E00),  # 主题域：朱红，醒目
+        _colour_group(SUBTOPICS_DIR, 0xCC79A7),  # 子主题：紫红，醒目，与朱红在色盲眼中也分得清
+        _colour_group(CONCEPTS_DIR, 0x0072B2),  # 概念页：蓝，主色
+        _colour_group(SYNTHESES_DIR, 0x009E73),  # 综述页：蓝绿
+        _colour_group(SOURCES_DIR, 0x9E9E9E),  # 来源页：灰，退后
+        _colour_group(NOTES_DIR, 0xE69F00),  # 我的笔记：橙
     ],
     "showArrow": False,
     "textFadeMultiplier": -1,  # 缩小时页面名也早些显示
@@ -187,6 +187,7 @@ class GraphState(Enum):
     WRITTEN = "已写入预置"
     ALREADY = "已是预置"
     CUSTOMISED = "用户已自定义"
+    UNREADABLE = "读不懂"
 
 
 # Obsidian 第一次打开关系图谱时写下的设置；只有这些键、且都是这些值的 graph.json 没有用户的选择。
@@ -218,15 +219,26 @@ def _graph_choices(settings: dict[str, object]) -> dict[str, object]:
 
 
 def _same(a: object, b: object) -> bool:
-    if isinstance(a, (int, float)) and isinstance(b, (int, float)) and not isinstance(a, bool):
-        return not isinstance(b, bool) and math.isclose(a, b)
+    """JSON 值相等；数字容忍浮点误差，布尔值不当作 0 和 1。"""
+    if isinstance(a, bool) or isinstance(b, bool):
+        return a is b
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return math.isclose(a, b)
     return a == b
 
 
 def _is_obsidian_default(settings: dict[str, object]) -> bool:
+    """只有 Obsidian 默认设置里的键、且都是默认值（缺少的键也按默认值）。"""
     return all(
         key in _OBSIDIAN_GRAPH_DEFAULTS and _same(value, _OBSIDIAN_GRAPH_DEFAULTS[key])
         for key, value in _graph_choices(settings).items()
+    )
+
+
+def _is_preset(settings: dict[str, object]) -> bool:
+    """预置中的每一项都在；新版 Obsidian 另外补上的设置不影响。"""
+    return all(
+        key in settings and _same(settings[key], value) for key, value in GRAPH_PRESET.items()
     )
 
 
@@ -246,8 +258,8 @@ def preset_graph(root: Path) -> GraphState:
     target = root / GRAPH_SETTINGS
     settings = _read_graph(target)
     if settings is None:
-        return GraphState.CUSTOMISED
-    if _graph_choices(settings) == GRAPH_PRESET:
+        return GraphState.UNREADABLE
+    if _is_preset(settings):
         return GraphState.ALREADY
     if not _is_obsidian_default(settings):
         return GraphState.CUSTOMISED
